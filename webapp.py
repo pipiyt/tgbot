@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import html
 import logging
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -147,43 +146,40 @@ class WebAppServer:
 def require_user_id(request: web.Request, fallback_init_data: str = "") -> int:
     init_data = request.headers.get("X-Telegram-Init-Data", "") or fallback_init_data
     if init_data:
-        user = validate_init_data(init_data)
+        user, error = validate_init_data(init_data)
         if user and user.get("id"):
             return int(user["id"])
+        raise web.HTTPUnauthorized(text=f"Invalid Telegram initData: {error}")
 
     debug_user_id = request.query.get("telegram_id")
     if debug_user_id and settings.admin_id and int(debug_user_id) == settings.admin_id:
         return int(debug_user_id)
-    raise web.HTTPUnauthorized(text="Invalid Telegram initData")
+    raise web.HTTPUnauthorized(text="Invalid Telegram initData: missing")
 
 
-def validate_init_data(init_data: str) -> dict[str, Any] | None:
+def validate_init_data(init_data: str) -> tuple[dict[str, Any] | None, str]:
     if not settings.bot_token:
-        return None
+        return None, "BOT_TOKEN is empty"
     pairs = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = pairs.pop("hash", "")
     if not received_hash:
-        return None
-
-    auth_date = int(pairs.get("auth_date", "0") or 0)
-    if auth_date and time.time() - auth_date > 86400:
-        return None
+        return None, "hash is missing"
 
     data_check_string = "\n".join(f"{key}={pairs[key]}" for key in sorted(pairs))
     secret_key = hmac.new(b"WebAppData", settings.bot_token.encode(), hashlib.sha256).digest()
     calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(calculated_hash, received_hash):
-        return None
+        return None, "hash mismatch"
 
     import json
 
     user_raw = pairs.get("user")
     if not user_raw:
-        return None
+        return None, "user is missing"
     try:
-        return json.loads(user_raw)
+        return json.loads(user_raw), ""
     except ValueError:
-        return None
+        return None, "user json is invalid"
 
 
 async def load_news() -> list[dict]:
