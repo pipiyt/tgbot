@@ -4,64 +4,86 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Roblox Notification</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260520-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260520-3">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <main class="app">
-    <header class="topbar">
+    <header class="app-header">
+      <button class="back-btn" id="backBtn" type="button" aria-label="Назад">‹</button>
       <div>
-        <p class="eyebrow">Roblox Notification</p>
-        <h1>Меню бота</h1>
+        <p class="eyebrow">rbxnotifybot</p>
+        <h1 id="screenTitle">Главная</h1>
       </div>
-      <button class="icon-btn" id="refreshBtn" title="Обновить">⟳</button>
+      <button class="icon-btn" id="refreshBtn" type="button" title="Обновить">⟳</button>
     </header>
 
-    <nav class="tabs">
-      <button class="tab active" data-view="news">Новости</button>
-      <button class="tab" data-view="alerts">Уведомления</button>
-      <button class="tab" data-view="add">Добавить</button>
-      <button class="tab" data-view="settings">Настройки</button>
-    </nav>
+    <section id="home" class="screen active">
+      <div class="home-stack">
+        <button class="home-card" type="button" data-action="go" data-view="news">
+          <span class="home-icon">▤</span>
+          <span>
+            <strong>Новости</strong>
+            <small>Смотри последние новости из официальных источников Roblox.</small>
+          </span>
+          <span class="chevron">›</span>
+        </button>
 
-    <section id="news" class="view active">
-      <div class="section-title">
-        <h2>Новости Roblox</h2>
-        <span id="newsCount"></span>
+        <button class="home-card" type="button" data-action="go" data-view="games">
+          <span class="home-icon">🎮</span>
+          <span>
+            <strong>События в играх</strong>
+            <small>Подписывайся на игры и получай уведомления о событиях.</small>
+          </span>
+          <span class="chevron">›</span>
+        </button>
       </div>
-      <div id="newsList" class="list"></div>
+
+      <button class="notice-card" type="button" data-action="go" data-view="games">
+        <span class="notice-icon">🔔</span>
+        <span>
+          <strong>Уведомления включены</strong>
+          <small>Ты получишь уведомления о важных событиях и обновлениях игр.</small>
+        </span>
+        <span class="chevron">›</span>
+      </button>
     </section>
 
-    <section id="alerts" class="view">
-      <div class="section-title">
-        <h2>Уведомления в играх</h2>
+    <section id="news" class="screen">
+      <div class="segmented" id="newsFilters">
+        <button class="active" type="button" data-filter="all">Все</button>
+        <button type="button" data-filter="roblox">Roblox</button>
+        <button type="button" data-filter="dev">Разработчики</button>
       </div>
-      <div id="subsList" class="list"></div>
+      <div id="newsList" class="feed-list"></div>
+      <button class="wide-action" id="newsRefreshBtn" type="button">⟳ Обновить</button>
     </section>
 
-    <section id="add" class="view">
-      <div class="searchbox">
-        <input id="gameSearch" type="search" placeholder="Поиск игры по названию или ID...">
-        <button id="gameSearchBtn">Найти</button>
+    <section id="games" class="screen">
+      <div class="segmented">
+        <button class="active" type="button" data-action="games-mode" data-mode="subs">Мои подписки</button>
+        <button type="button" data-action="games-mode" data-mode="search">Поиск игр</button>
       </div>
-      <div id="searchResults" class="list"></div>
+
+      <div id="searchPanel" class="search-panel">
+        <div class="searchbox">
+          <input id="gameSearch" type="search" placeholder="Поиск игры по названию или ID...">
+          <button id="gameSearchBtn" type="button" aria-label="Найти">⌕</button>
+        </div>
+      </div>
+
+      <div id="gamesSubtitle" class="section-label">Мои подписки</div>
+      <div id="gamesList" class="game-list"></div>
+      <button class="wide-action" type="button" data-action="games-mode" data-mode="search">⊕ Добавить игру</button>
     </section>
 
-    <section id="settings" class="view">
-      <div class="panel">
-        <h2>Настройки</h2>
-        <p>Новости берутся из RSS-источников на сервере. Источники меняются в <code>NEWS_RSS_URLS</code>.</p>
-        <p>Для Twitter/X можно подключить RSS-мост или свой endpoint без изменения интерфейса.</p>
-      </div>
+    <section id="gameDetails" class="screen">
+      <div id="detailsBody"></div>
     </section>
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <template id="emptyTpl">
-    <div class="empty">Пока ничего нет</div>
-  </template>
-
-  <script src="/static/app.js?v=20260520-2"></script>
+  <script src="/static/app.js?v=20260520-3"></script>
 </body>
 </html>
