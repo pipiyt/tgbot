@@ -34,6 +34,6 @@ settings = Settings(
     admin_id=_get_int("ADMIN_ID", 0) or None,
     db_path=os.getenv("DB_PATH", "roblox_notifications.sqlite3"),
     check_interval_seconds=_get_int("CHECK_INTERVAL_SECONDS", 60),
-    http_timeout_seconds=_get_int("HTTP_TIMEOUT_SECONDS", 10),
-    http_retries=_get_int("HTTP_RETRIES", 3),
+    http_timeout_seconds=_get_int("HTTP_TIMEOUT_SECONDS", 5),
+    http_retries=_get_int("HTTP_RETRIES", 1),
 )

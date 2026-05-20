@@ -31,8 +31,8 @@ BOT_TOKEN=ваш_telegram_bot_token
 ADMIN_ID=ваш_telegram_id
 DB_PATH=roblox_notifications.sqlite3
 CHECK_INTERVAL_SECONDS=60
-HTTP_TIMEOUT_SECONDS=10
-HTTP_RETRIES=3
+HTTP_TIMEOUT_SECONDS=5
+HTTP_RETRIES=1
 ```
 
 Узнать свой Telegram ID можно через ботов вроде `@userinfobot`.
@@ -65,16 +65,15 @@ python bot.py
 
 ```python
 PLACE_DETAILS_URL = "https://games.roblox.com/v1/games/multiget-place-details"
-PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
 UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
-GAME_SEARCH_URL = "https://games.roblox.com/v1/games/list"
+PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
 OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
 EXPERIENCE_EVENTS_URL = "https://apis.roblox.com/experience-events-api/v1/universes/{universe_id}/events"
 ```
 
 Если текущий `EXPERIENCE_EVENTS_URL` перестал отвечать или Roblox изменил формат, замените только эту константу. Код нормализует несколько распространенных вариантов ответа: `data`, `events`, `experienceEvents`, а также поля `id/eventId`, `title/name`, `startTime/startsAt`.
 
-Если поиск игры по названию перестал работать, проверьте `GAME_SEARCH_URL` и `OMNI_SEARCH_URL`. Бот сначала пробует `GAME_SEARCH_URL`, затем запасной `OMNI_SEARCH_URL`.
+Если поиск игры по названию перестал работать, проверьте `OMNI_SEARCH_URL`. Бот использует один быстрый поиск без лишних fallback-запросов, чтобы Telegram-ответ был быстрее.
 
 Бот не использует Roblox cookie, не обходит защиту Roblox и не требует платных сервисов. Если endpoint событий недоступен, бот не падает: ошибка пишется в лог, а следующая проверка выполнится по расписанию.

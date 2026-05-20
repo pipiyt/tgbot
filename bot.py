@@ -14,14 +14,10 @@ from config import settings
 from database import Database
 from keyboards import main_menu, search_results_keyboard, subscriptions_keyboard
 from roblox_api import (
-    GAME_SEARCH_WEB_URL,
     OMNI_SEARCH_URL,
     PLACE_UNIVERSE_URL,
-    PLACE_WEB_DETAILS_URL,
     close_api,
     get_api,
-    get_game_info,
-    get_thumbnail,
     resolve_game,
     search_games,
 )
@@ -37,6 +33,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 db = Database(settings.db_path)
 scheduler: EventScheduler | None = None
+search_cache: dict[int, dict[int, dict]] = {}
 
 
 class AddGame(StatesGroup):
@@ -87,6 +84,7 @@ async def add_game_value(message: Message, state: FSMContext) -> None:
     if not game:
         results = await search_games(message.text)
         if results:
+            search_cache[message.from_user.id] = {int(item["universe_id"]): item for item in results}
             await status_message.edit_text(
                 "Я нашел несколько игр. Выберите нужную:",
                 reply_markup=search_results_keyboard(results),
@@ -112,46 +110,52 @@ async def add_subscription_message(
     universe_id: int,
     place_id: int,
     fallback_name: str = "Roblox Game",
+    playing: int = 0,
+    visits: int = 0,
 ) -> None:
-    info = await get_game_info(universe_id) or {}
-    thumbnail = await get_thumbnail(universe_id)
-    game_name = info.get("name") or fallback_name
-    final_place_id = int(info.get("place_id") or place_id)
+    game_name = fallback_name
+    final_place_id = int(place_id or 0)
     if not final_place_id:
         await message.answer("Нашел игру, но Roblox не вернул placeId. Попробуйте ссылку на игру.")
         return
 
-    added = await db.add_subscription(message.from_user.id, universe_id, final_place_id, game_name)
+    added = await db.add_subscription(message.chat.id, universe_id, final_place_id, game_name)
     status = "Подписка добавлена." if added else "Эта игра уже есть в ваших подписках."
     text = (
         f"{status}\n\n"
         f"🎮 {game_name}\n"
         f"Universe ID: {universe_id}\n"
         f"Place ID: {final_place_id}\n"
-        f"👥 Онлайн: {info.get('playing', 0)}\n"
-        f"👁 Visits: {info.get('visits', 0)}"
+        f"👥 Онлайн: {playing}\n"
+        f"👁 Visits: {visits}"
     )
-    if thumbnail:
-        await message.answer_photo(thumbnail, caption=text, reply_markup=main_menu())
-    else:
-        await message.answer(text, reply_markup=main_menu())
+    await message.answer(text, reply_markup=main_menu())
 
 
 @router.callback_query(F.data.startswith("pickgame:"))
 async def pick_game_callback(callback: CallbackQuery, state: FSMContext) -> None:
     parts = callback.data.split(":")
-    if len(parts) != 3:
+    if len(parts) != 2:
         await callback.answer("Не удалось выбрать игру")
         return
 
     await state.clear()
     universe_id = int(parts[1])
-    place_id = int(parts[2])
+    cached = search_cache.get(callback.from_user.id, {}).get(universe_id)
+    if not cached:
+        await callback.answer("Поиск устарел")
+        await callback.message.answer("Нажмите ➕ Добавить игру и найдите игру заново.")
+        return
+
+    place_id = int(cached.get("place_id") or 0)
     await callback.answer("Добавляю игру")
     await add_subscription_message(
         message=callback.message,
         universe_id=universe_id,
         place_id=place_id,
+        fallback_name=cached.get("name") or "Roblox Game",
+        playing=int(cached.get("playing") or 0),
+        visits=int(cached.get("visits") or 0),
     )
 
 
@@ -236,26 +240,12 @@ async def debug_roblox(message: Message) -> None:
             {},
         ),
         (
-            "legacy place details",
-            PLACE_WEB_DETAILS_URL,
-            {"assetId": "90148635862803"},
-        ),
-        (
             "omni search",
             OMNI_SEARCH_URL,
             {
                 "searchQuery": "Adopt Me",
                 "pageType": "all",
                 "sessionId": "roblox-notification-bot",
-            },
-        ),
-        (
-            "web search",
-            GAME_SEARCH_WEB_URL,
-            {
-                "keyword": "Adopt Me",
-                "maxRows": "3",
-                "startRows": "0",
             },
         ),
     ]

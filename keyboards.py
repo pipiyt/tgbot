@@ -40,7 +40,7 @@ def search_results_keyboard(results: list[dict]) -> InlineKeyboardMarkup | None:
             [
                 InlineKeyboardButton(
                     text=f"{title} | онлайн {playing}",
-                    callback_data=f"pickgame:{item['universe_id']}:{item['place_id']}",
+                    callback_data=f"pickgame:{item['universe_id']}",
                 )
             ]
         )
