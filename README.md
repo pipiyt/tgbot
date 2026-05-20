@@ -36,7 +36,7 @@ HTTP_RETRIES=1
 WEBAPP_URL=https://your-domain.example
 WEBAPP_HOST=0.0.0.0
 WEBAPP_PORT=8080
-NEWS_ROBLOX_RSS_URLS=https://rsshub.app/twitter/user/Roblox_RTC,https://rss.detools.dev/twitter/user/Roblox_RTC,https://rsshub.isrss.com/twitter/user/Roblox_RTC,https://rsshub-boost.23751.net/twitter/user/Roblox_RTC
+NEWS_ROBLOX_RSS_URLS=https://twiiit.com/Roblox_RTC/rss,https://rsshub.app/twitter/user/Roblox_RTC,https://rss.detools.dev/twitter/user/Roblox_RTC,https://rsshub.isrss.com/twitter/user/Roblox_RTC,https://rsshub-boost.23751.net/twitter/user/Roblox_RTC
 NEWS_DEVELOPER_RSS_URLS=https://blog.roblox.com/feed/
 ```
 

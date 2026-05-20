@@ -10,6 +10,7 @@ load_dotenv()
 
 
 DEFAULT_ROBLOX_NEWS_RSS_URLS = (
+    "https://twiiit.com/Roblox_RTC/rss,"
     "https://rsshub.app/twitter/user/Roblox_RTC,"
     "https://rss.detools.dev/twitter/user/Roblox_RTC,"
     "https://rsshub.isrss.com/twitter/user/Roblox_RTC,"

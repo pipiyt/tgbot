@@ -382,7 +382,13 @@ def normalize_cached_news(rows: list[dict]) -> list[dict]:
 
 async def fetch_news_sources() -> list[dict]:
     timeout = aiohttp.ClientTimeout(total=4)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        headers={
+            "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
+            "User-Agent": "Mozilla/5.0 (compatible; RobloxNotificationBot/1.0; +https://rbxnotify.ru)",
+        },
+    ) as session:
         tasks = [
             *(fetch_rss(session, url, "roblox") for url in settings.news_roblox_rss_urls),
             *(fetch_rss(session, url, "dev") for url in settings.news_developer_rss_urls),
