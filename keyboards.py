@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
 from config import settings
@@ -7,7 +10,7 @@ from config import settings
 
 def main_menu() -> ReplyKeyboardMarkup:
     if settings.webapp_url:
-        rows = [[KeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=settings.webapp_url))]]
+        rows = [[KeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=webapp_url()))]]
     else:
         rows = [[KeyboardButton(text="Приложение временно недоступно")]]
     return ReplyKeyboardMarkup(
@@ -15,6 +18,13 @@ def main_menu() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
         input_field_placeholder="Выберите действие",
     )
+
+
+def webapp_url() -> str:
+    parts = urlsplit(settings.webapp_url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["tg_v"] = str(int(time.time()))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def subscriptions_keyboard(subscriptions: list[dict]) -> InlineKeyboardMarkup | None:
