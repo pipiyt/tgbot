@@ -458,7 +458,6 @@ class RobloxApi:
             or item.get("startsAt")
             or item.get("start_time")
             or item.get("eventStartTime")
-            or item.get("eventTime")
             or item.get("startUtc")
             or item.get("starts")
         )
@@ -469,14 +468,21 @@ class RobloxApi:
             or item.get("endUtc")
             or item.get("ends")
         )
+        event_time = item.get("eventTime")
+        if isinstance(event_time, dict):
+            start_time = start_time or event_time.get("startUtc") or event_time.get("startTime")
+            end_time = end_time or event_time.get("endUtc") or event_time.get("endTime")
+
         image_url = self._extract_event_image_url(item)
 
         return {
             "event_id": str(event_id),
             "universe_id": universe_id,
-            "title": str(title),
+            "title": str(item.get("displayTitle") or title),
             "description": (
-                item.get("description")
+                item.get("displayDescription")
+                or item.get("description")
+                or item.get("displaySubtitle")
                 or item.get("subtitle")
                 or item.get("caption")
                 or item.get("shortDescription")
@@ -492,10 +498,18 @@ class RobloxApi:
         if isinstance(direct, str):
             return direct
 
-        for key in ("image", "thumbnail", "icon", "media"):
+        for key in ("image", "thumbnail", "icon", "media", "asset", "assets", "thumbnails"):
             value = item.get(key)
             if isinstance(value, str):
                 return value
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, str):
+                        return entry
+                    if isinstance(entry, dict):
+                        nested = entry.get("url") or entry.get("imageUrl") or entry.get("thumbnailUrl")
+                        if isinstance(nested, str):
+                            return nested
             if isinstance(value, dict):
                 nested = value.get("url") or value.get("imageUrl") or value.get("thumbnailUrl")
                 if isinstance(nested, str):

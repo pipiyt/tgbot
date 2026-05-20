@@ -196,8 +196,7 @@ async def send_subscription_events(message: Message, subscriptions_items: list[d
                 f"🎮 Игра: {item['game_name']}\n"
                 f"🎁 Событие: {event['title']}\n"
                 f"📝 Описание: {event.get('description') or 'нет описания'}\n"
-                f"🕒 Старт: {format_time(event.get('start_time'))}\n"
-                f"▶️ Играть: https://www.roblox.com/games/{item['place_id']}"
+                f"🕒 Старт: {format_time(event.get('start_time'))}"
             )
             image_url = event.get("image_url")
             if image_url:
