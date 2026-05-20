@@ -26,12 +26,15 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "webapp_static"
 POPULAR_CACHE_TTL_SECONDS = 300
 CHATS_CACHE_TTL_SECONDS = 600
+NEWS_CACHE_TTL_SECONDS = 900
 CHAT_LINKS = ("tradekronos", "stealabrain_chat")
 _popular_cache: list[dict] = []
 _popular_cache_ts = 0.0
 _chats_cache: list[dict] = []
 _chats_cache_ts = 0.0
 _telegram_file_cache: dict[str, str] = {}
+_news_refresh_lock = asyncio.Lock()
+_news_cache_ts = 0.0
 
 
 class WebAppServer:
@@ -72,7 +75,9 @@ class WebAppServer:
         return response
 
     async def news(self, request: web.Request) -> web.Response:
-        items = await load_news()
+        category = request.query.get("category", "").strip() or None
+        force = request.query.get("refresh") == "1"
+        items = await load_news_cached(self.db, category, force)
         return web.json_response({"items": items[:20]})
 
     async def subscriptions(self, request: web.Request) -> web.Response:
@@ -342,21 +347,58 @@ def fallback_chat(username: str) -> dict:
     }
 
 
-async def load_news() -> list[dict]:
+async def load_news_cached(db: Database, category: str | None = None, force: bool = False) -> list[dict]:
+    global _news_cache_ts
+    now = time.monotonic()
+    cached = await db.get_news_items(category, 30)
+    if cached and not force and now - _news_cache_ts < NEWS_CACHE_TTL_SECONDS:
+        return normalize_cached_news(cached)
+
+    async with _news_refresh_lock:
+        now = time.monotonic()
+        if force or not cached or now - _news_cache_ts >= NEWS_CACHE_TTL_SECONDS:
+            fresh_items = await fetch_news_sources()
+            for item in fresh_items:
+                await db.upsert_news_item(item)
+            _news_cache_ts = time.monotonic()
+
+    return normalize_cached_news(await db.get_news_items(category, 30))
+
+
+def normalize_cached_news(rows: list[dict]) -> list[dict]:
+    return [
+        {
+            "title": row.get("title_ru") or row.get("title") or "",
+            "description": row.get("description_ru") or row.get("description") or "",
+            "link": row.get("link") or "",
+            "image": row.get("image") or "",
+            "published_ts": row.get("published_ts") or 0,
+            "source": row.get("source") or "",
+            "category": row.get("category") or "",
+        }
+        for row in rows
+    ]
+
+
+async def fetch_news_sources() -> list[dict]:
     timeout = aiohttp.ClientTimeout(total=4)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        tasks = [fetch_rss(session, url) for url in settings.news_rss_urls]
+        tasks = [
+            *(fetch_rss(session, url, "roblox") for url in settings.news_roblox_rss_urls),
+            *(fetch_rss(session, url, "dev") for url in settings.news_developer_rss_urls),
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     items: list[dict] = []
     for result in results:
         if isinstance(result, list):
             items.extend(result)
+    await translate_news_items(items)
     items.sort(key=lambda item: item.get("published_ts", 0), reverse=True)
     return items
 
 
-async def fetch_rss(session: aiohttp.ClientSession, url: str) -> list[dict]:
+async def fetch_rss(session: aiohttp.ClientSession, url: str, category: str) -> list[dict]:
     try:
         async with session.get(url) as response:
             if response.status >= 400:
@@ -366,10 +408,10 @@ async def fetch_rss(session: aiohttp.ClientSession, url: str) -> list[dict]:
     except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
         logger.warning("News RSS failed: %s - %r", url, exc)
         return []
-    return parse_rss(text, url)
+    return parse_rss(text, url, category)
 
 
-def parse_rss(text: str, source_url: str) -> list[dict]:
+def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
     try:
         root = ElementTree.fromstring(text)
     except ElementTree.ParseError:
@@ -384,8 +426,11 @@ def parse_rss(text: str, source_url: str) -> list[dict]:
         published_ts = parse_news_time(published)
         image = find_rss_image(item)
         if title:
+            source_id = hashlib.sha256(f"{source_url}|{link or title}|{published}".encode()).hexdigest()
             items.append(
                 {
+                    "source_id": source_id,
+                    "category": category,
                     "title": title,
                     "description": description,
                     "link": link,
@@ -396,6 +441,12 @@ def parse_rss(text: str, source_url: str) -> list[dict]:
                 }
             )
     return items
+
+
+async def translate_news_items(items: list[dict]) -> None:
+    for item in items:
+        item["title_ru"] = await translate_to_ru(item.get("title") or "")
+        item["description_ru"] = await translate_to_ru(item.get("description") or "")
 
 
 def get_child_text(item: ElementTree.Element, tag: str) -> str:

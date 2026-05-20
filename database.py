@@ -36,6 +36,24 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_subscriptions_universe_id ON subscriptions(universe_id);
 CREATE INDEX IF NOT EXISTS idx_events_universe_id ON events(universe_id);
 CREATE INDEX IF NOT EXISTS idx_events_start_time ON events(start_time);
+
+CREATE TABLE IF NOT EXISTS news_items (
+    source_id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    title_ru TEXT,
+    description TEXT,
+    description_ru TEXT,
+    link TEXT,
+    image TEXT,
+    published_ts REAL DEFAULT 0,
+    source TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_news_items_category ON news_items(category);
+CREATE INDEX IF NOT EXISTS idx_news_items_published_ts ON news_items(published_ts);
 """
 
 
@@ -178,3 +196,61 @@ class Database:
             row = await cursor.fetchone()
             result[table] = row["count"]
         return result
+
+    async def upsert_news_item(self, item: dict) -> None:
+        await self._db().execute(
+            """
+            INSERT INTO news_items (
+                source_id, category, title, title_ru, description, description_ru,
+                link, image, published_ts, source
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_id) DO UPDATE SET
+                category = excluded.category,
+                title = excluded.title,
+                title_ru = excluded.title_ru,
+                description = excluded.description,
+                description_ru = excluded.description_ru,
+                link = excluded.link,
+                image = excluded.image,
+                published_ts = excluded.published_ts,
+                source = excluded.source,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                item["source_id"],
+                item["category"],
+                item["title"],
+                item.get("title_ru"),
+                item.get("description"),
+                item.get("description_ru"),
+                item.get("link"),
+                item.get("image"),
+                item.get("published_ts", 0),
+                item.get("source"),
+            ),
+        )
+        await self._db().commit()
+
+    async def get_news_items(self, category: str | None = None, limit: int = 30) -> list[dict]:
+        if category:
+            cursor = await self._db().execute(
+                """
+                SELECT * FROM news_items
+                WHERE category = ?
+                ORDER BY published_ts DESC, updated_at DESC
+                LIMIT ?
+                """,
+                (category, limit),
+            )
+        else:
+            cursor = await self._db().execute(
+                """
+                SELECT * FROM news_items
+                ORDER BY published_ts DESC, updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

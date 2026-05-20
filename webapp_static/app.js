@@ -11,6 +11,7 @@ const state = {
   view: "home",
   previousView: "home",
   newsFilter: "all",
+  newsCategory: "",
   gamesMode: "subs",
   news: [],
   chats: [],
@@ -72,7 +73,7 @@ document.querySelector("#newsFilters").addEventListener("click", (event) => {
   if (!button) return;
   state.newsFilter = button.dataset.filter;
   document.querySelectorAll("#newsFilters button").forEach((item) => item.classList.toggle("active", item === button));
-  renderNews();
+  loadNews();
 });
 
 document.addEventListener("click", (event) => {
@@ -115,14 +116,18 @@ async function loadCurrent(force = false) {
 
 async function loadNews(force = false) {
   const list = document.querySelector("#newsList");
-  if (state.news.length && !force) {
+  if (state.news.length && !force && state.newsCategory === state.newsFilter) {
     renderNews();
     return;
   }
   list.innerHTML = skeleton("Загружаю новости...");
   try {
-    const data = await api("/api/news");
+    const category = state.newsFilter === "all" ? "" : `category=${encodeURIComponent(state.newsFilter)}`;
+    const refresh = force ? `${category ? "&" : ""}refresh=1` : "";
+    const query = category || refresh ? `?${category}${refresh}` : "";
+    const data = await api(`/api/news${query}`);
     state.news = data.items || [];
+    state.newsCategory = state.newsFilter;
     renderNews();
   } catch (error) {
     list.innerHTML = empty("Новости пока недоступны");
@@ -131,12 +136,7 @@ async function loadNews(force = false) {
 
 function renderNews() {
   const list = document.querySelector("#newsList");
-  const items = state.news.filter((item) => {
-    const text = `${item.title || ""} ${item.description || ""}`.toLowerCase();
-    if (state.newsFilter === "dev") return /studio|developer|creator|разработ/.test(text);
-    if (state.newsFilter === "roblox") return true;
-    return true;
-  });
+  const items = state.news;
   list.innerHTML = items.length ? items.slice(0, 16).map(newsCard).join("") : empty("Новостей пока нет");
 }
 

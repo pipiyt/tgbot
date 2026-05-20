@@ -30,7 +30,8 @@ class Settings:
     webapp_url: str
     webapp_host: str
     webapp_port: int
-    news_rss_urls: tuple[str, ...]
+    news_roblox_rss_urls: tuple[str, ...]
+    news_developer_rss_urls: tuple[str, ...]
 
 
 settings = Settings(
@@ -43,9 +44,14 @@ settings = Settings(
     webapp_url=os.getenv("WEBAPP_URL", "").rstrip("/"),
     webapp_host=os.getenv("WEBAPP_HOST", "0.0.0.0"),
     webapp_port=_get_int("WEBAPP_PORT", 8080),
-    news_rss_urls=tuple(
+    news_roblox_rss_urls=tuple(
         url.strip()
-        for url in os.getenv("NEWS_RSS_URLS", "https://blog.roblox.com/feed/").split(",")
+        for url in os.getenv("NEWS_ROBLOX_RSS_URLS", "").split(",")
+        if url.strip()
+    ),
+    news_developer_rss_urls=tuple(
+        url.strip()
+        for url in os.getenv("NEWS_DEVELOPER_RSS_URLS", os.getenv("NEWS_RSS_URLS", "https://blog.roblox.com/feed/")).split(",")
         if url.strip()
     ),
 )
