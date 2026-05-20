@@ -440,6 +440,41 @@ def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
                     "source": source_url,
                 }
             )
+    if items:
+        return items
+
+    for entry in root.findall(".//{*}entry")[:20]:
+        title = get_child_text(entry, "title") or get_child_text_ns(entry, "title")
+        link = find_atom_link(entry)
+        description = strip_html(
+            get_child_text(entry, "summary")
+            or get_child_text(entry, "content")
+            or get_child_text_ns(entry, "summary")
+            or get_child_text_ns(entry, "content")
+        )
+        published = (
+            get_child_text(entry, "published")
+            or get_child_text(entry, "updated")
+            or get_child_text_ns(entry, "published")
+            or get_child_text_ns(entry, "updated")
+        )
+        published_ts = parse_news_time(published)
+        image = find_rss_image(entry)
+        if title:
+            source_id = hashlib.sha256(f"{source_url}|{link or title}|{published}".encode()).hexdigest()
+            items.append(
+                {
+                    "source_id": source_id,
+                    "category": category,
+                    "title": title,
+                    "description": description,
+                    "link": link,
+                    "published": published,
+                    "published_ts": published_ts,
+                    "image": image,
+                    "source": source_url,
+                }
+            )
     return items
 
 
@@ -452,6 +487,23 @@ async def translate_news_items(items: list[dict]) -> None:
 def get_child_text(item: ElementTree.Element, tag: str) -> str:
     child = item.find(tag)
     return child.text.strip() if child is not None and child.text else ""
+
+
+def get_child_text_ns(item: ElementTree.Element, tag: str) -> str:
+    child = item.find(f"{{*}}{tag}")
+    return child.text.strip() if child is not None and child.text else ""
+
+
+def find_atom_link(entry: ElementTree.Element) -> str:
+    for child in entry.findall("{*}link"):
+        href = child.attrib.get("href")
+        rel = child.attrib.get("rel", "alternate")
+        if href and rel == "alternate":
+            return href
+    link = entry.find("{*}link")
+    if link is not None:
+        return link.attrib.get("href", "")
+    return get_child_text(entry, "link") or get_child_text_ns(entry, "link")
 
 
 def find_rss_image(item: ElementTree.Element) -> str:
@@ -479,6 +531,14 @@ def parse_news_time(value: str) -> float:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.timestamp()
     except (TypeError, ValueError):
+        pass
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except ValueError:
         return 0
 
 

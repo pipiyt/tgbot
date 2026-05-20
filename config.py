@@ -46,7 +46,7 @@ settings = Settings(
     webapp_port=_get_int("WEBAPP_PORT", 8080),
     news_roblox_rss_urls=tuple(
         url.strip()
-        for url in os.getenv("NEWS_ROBLOX_RSS_URLS", "").split(",")
+        for url in (os.getenv("NEWS_ROBLOX_RSS_URLS") or "https://rsshub.app/twitter/user/Roblox_RTC").split(",")
         if url.strip()
     ),
     news_developer_rss_urls=tuple(
