@@ -84,6 +84,19 @@ WEBAPP_PORT=8080
 
 Новости берутся из `NEWS_RSS_URLS`. Можно указать несколько RSS через запятую. Для Twitter/X без платного API используйте внешний RSS-мост или свой endpoint, например RSSHub/Nitter, если он доступен на вашем сервере.
 
+### Быстрая установка WebApp на VPS
+
+На сервере из папки проекта:
+
+```bash
+cd ~/tgbot
+git pull
+chmod +x deploy_webapp.sh
+./deploy_webapp.sh rbxnotify.ru /root/tgbot rbxnotifybot
+```
+
+Скрипт установит Nginx, зависимости Python, создаст systemd-сервис, настроит прокси на `127.0.0.1:8080` и попробует выпустить Let's Encrypt SSL.
+
 ## 5. Где менять Roblox Events endpoint
 
 Все URL Roblox API находятся в `roblox_api.py`:
