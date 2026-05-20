@@ -418,6 +418,8 @@ class RobloxApi:
         for item in raw_events:
             normalized = self._normalize_event(universe_id, item)
             if normalized:
+                if self._is_event_finished(normalized):
+                    continue
                 if not normalized.get("image_url") and normalized.get("image_asset_id"):
                     normalized["image_url"] = await self.get_asset_thumbnail(int(normalized["image_asset_id"]))
                 events.append(normalized)
@@ -566,6 +568,8 @@ class RobloxApi:
         data = await self._request_json(
             ASSET_THUMBNAIL_URL,
             retries=1,
+            fallback=False,
+            timeout=aiohttp.ClientTimeout(total=3),
             params={
                 "assetIds": str(asset_id),
                 "size": "768x432",
@@ -588,6 +592,18 @@ class RobloxApi:
         if isinstance(value, str):
             return value
         return None
+
+    def _is_event_finished(self, event: dict) -> bool:
+        end_value = event.get("end_time")
+        if not end_value:
+            return False
+        try:
+            end_time = datetime.fromisoformat(str(end_value).replace("Z", "+00:00"))
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) >= end_time.astimezone(timezone.utc)
+        except ValueError:
+            return False
 
 
 _api: RobloxApi | None = None

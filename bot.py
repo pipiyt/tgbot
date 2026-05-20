@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, Message
 
 from config import settings
 from database import Database
-from keyboards import main_menu, search_results_keyboard, subscriptions_keyboard
+from keyboards import main_menu, search_results_keyboard, subscriptions_events_keyboard, subscriptions_keyboard
 from roblox_api import (
     OMNI_SEARCH_URL,
     PLACE_UNIVERSE_URL,
@@ -22,7 +22,8 @@ from roblox_api import (
     resolve_game,
     search_games,
 )
-from scheduler import EventScheduler, event_time_label, format_time
+from scheduler import EventScheduler, event_time_label, format_time, parse_roblox_time
+from datetime import datetime, timezone
 
 
 logging.basicConfig(
@@ -167,34 +168,55 @@ async def subscriptions(message: Message) -> None:
     if not items:
         await message.answer("У вас пока нет подписок. Нажмите ➕ Добавить игру.")
         return
-    await send_subscription_events(message, items)
+    await message.answer(
+        "Выберите игру, чтобы посмотреть события:",
+        reply_markup=subscriptions_events_keyboard(items),
+    )
 
 
-async def send_subscription_events(message: Message, subscriptions_items: list[dict]) -> None:
-    await message.answer("Проверяю события по вашим подпискам...")
-    for item in subscriptions_items:
-        events_list = await get_game_events(int(item["universe_id"]))
-        if not events_list:
-            await message.answer(
-                f"🎮 {item['game_name']}\n"
-                "События: Roblox events endpoint сейчас не вернул данные."
-            )
-            continue
+@router.callback_query(F.data.startswith("showevents:"))
+async def show_events_callback(callback: CallbackQuery) -> None:
+    subscription_id = int(callback.data.split(":", 1)[1])
+    items = await db.get_user_subscriptions(callback.from_user.id)
+    item = next((sub for sub in items if int(sub["id"]) == subscription_id), None)
+    if not item:
+        await callback.answer("Подписка не найдена")
+        return
 
-        for event in events_list[:3]:
-            await db.upsert_event(event)
-            text = (
-                f"🔔 Roblox Event\n"
-                f"🎮 Игра: {item['game_name']}\n"
-                f"🎁 Событие: {event['title']}\n"
-                f"📝 Описание: {event.get('description') or 'нет описания'}\n"
-                f"🕒 {event_time_label(event.get('start_time'), event.get('end_time'))}"
-            )
-            image_url = event.get("image_url")
-            if image_url:
-                await message.answer_photo(image_url, caption=telegram_caption(text))
-            else:
-                await message.answer(text)
+    await callback.answer("Проверяю события")
+    await callback.message.answer(f"Проверяю события: {item['game_name']}...")
+    await send_subscription_events(callback.message, item)
+
+
+async def send_subscription_events(message: Message, item: dict) -> None:
+    events_list = await get_game_events(int(item["universe_id"]))
+    active_events = [event for event in events_list if not is_event_finished(event)]
+    if not active_events:
+        await message.answer(
+            f"🎮 {item['game_name']}\n"
+            "Активных или будущих событий сейчас нет."
+        )
+        return
+
+    for event in active_events[:5]:
+        await db.upsert_event(event)
+        text = (
+            f"🔔 Roblox Event\n"
+            f"🎮 Игра: {item['game_name']}\n"
+            f"🎁 Событие: {event['title']}\n"
+            f"📝 Описание: {event.get('description') or 'нет описания'}\n"
+            f"🕒 {event_time_label(event.get('start_time'), event.get('end_time'))}"
+        )
+        image_url = event.get("image_url")
+        if image_url:
+            await message.answer_photo(image_url, caption=telegram_caption(text))
+        else:
+            await message.answer(text)
+
+
+def is_event_finished(event: dict) -> bool:
+    end_time = parse_roblox_time(event.get("end_time"))
+    return bool(end_time and datetime.now(timezone.utc) >= end_time)
 
 
 def telegram_caption(text: str) -> str:

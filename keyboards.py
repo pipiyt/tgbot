@@ -29,6 +29,30 @@ def subscriptions_keyboard(subscriptions: list[dict]) -> InlineKeyboardMarkup | 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def subscriptions_events_keyboard(subscriptions: list[dict]) -> InlineKeyboardMarkup | None:
+    if not subscriptions:
+        return None
+    rows = []
+    for item in subscriptions:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🔔 {item['game_name'][:34]}",
+                    callback_data=f"showevents:{item['id']}",
+                )
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Удалить подписку: {item['game_name'][:26]}",
+                    callback_data=f"remove:{item['id']}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def search_results_keyboard(results: list[dict]) -> InlineKeyboardMarkup | None:
     if not results:
         return None
