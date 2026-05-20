@@ -43,6 +43,7 @@ class WebAppServer:
         app = web.Application()
         app["db"] = self.db
         app.router.add_get("/", self.index)
+        app.router.add_post("/api/activity", self.activity)
         app.router.add_get("/api/news", self.news)
         app.router.add_get("/api/subscriptions", self.subscriptions)
         app.router.add_get("/api/subscriptions/{subscription_id}/events", self.subscription_events)
@@ -76,6 +77,24 @@ class WebAppServer:
         rows = await filter_existing_news(self.db, await self.db.get_news_items("roblox", 30))
         items = normalize_cached_news(rows)
         return web.json_response({"items": items[:20]})
+
+    async def activity(self, request: web.Request) -> web.Response:
+        init_data = request.headers.get("X-Telegram-Init-Data", "")
+        username = None
+        user_id = None
+        if init_data:
+            user, error = validate_init_data(init_data)
+            if not user or not user.get("id"):
+                raise web.HTTPUnauthorized(text=f"Invalid Telegram initData: {error}")
+            user_id = int(user["id"])
+            username = user.get("username")
+        else:
+            user_id = validate_signed_user(request)
+        if not user_id:
+            return web.json_response({"ok": False, "tracked": False})
+        await self.db.add_user(user_id, username)
+        await self.db.record_webapp_activity(user_id, username)
+        return web.json_response({"ok": True, "tracked": True})
 
     async def subscriptions(self, request: web.Request) -> web.Response:
         user_id = require_user_id(request)

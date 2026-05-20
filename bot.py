@@ -363,6 +363,10 @@ async def admin(message: Message) -> None:
     await message.answer(
         "Статистика:\n"
         f"Пользователи: {stats['users']}\n"
+        f"Новых сегодня: {stats['users_today']}\n"
+        f"Онлайн в WebApp: {stats['online']}\n"
+        f"Заходов сегодня: {stats['visits_today']}\n"
+        f"Уникальных заходов сегодня: {stats['visitors_today']}\n"
         f"Подписки: {stats['subscriptions']}\n"
         f"События: {stats['events']}"
     )

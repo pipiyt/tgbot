@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import aiosqlite
 
 
@@ -54,6 +56,23 @@ CREATE TABLE IF NOT EXISTS news_items (
 
 CREATE INDEX IF NOT EXISTS idx_news_items_category ON news_items(category);
 CREATE INDEX IF NOT EXISTS idx_news_items_published_ts ON news_items(published_ts);
+
+CREATE TABLE IF NOT EXISTS webapp_activity (
+    telegram_id INTEGER PRIMARY KEY,
+    username TEXT,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webapp_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL,
+    visited_at TEXT NOT NULL,
+    visit_date TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_webapp_activity_last_seen ON webapp_activity(last_seen);
+CREATE INDEX IF NOT EXISTS idx_webapp_visits_date ON webapp_visits(visit_date);
 """
 
 
@@ -195,7 +214,69 @@ class Database:
             cursor = await self._db().execute(f"SELECT COUNT(*) AS count FROM {table}")
             row = await cursor.fetchone()
             result[table] = row["count"]
+        today = _moscow_today()
+        online_cutoff = _utc_now() - timedelta(minutes=5)
+        cursor = await self._db().execute(
+            "SELECT COUNT(*) AS count FROM users WHERE date(datetime(created_at, '+3 hours')) = ?",
+            (today,),
+        )
+        row = await cursor.fetchone()
+        result["users_today"] = row["count"]
+        cursor = await self._db().execute(
+            "SELECT COUNT(*) AS count FROM webapp_activity WHERE last_seen >= ?",
+            (online_cutoff.isoformat(),),
+        )
+        row = await cursor.fetchone()
+        result["online"] = row["count"]
+        cursor = await self._db().execute(
+            "SELECT COUNT(*) AS count FROM webapp_visits WHERE visit_date = ?",
+            (today,),
+        )
+        row = await cursor.fetchone()
+        result["visits_today"] = row["count"]
+        cursor = await self._db().execute(
+            "SELECT COUNT(DISTINCT telegram_id) AS count FROM webapp_visits WHERE visit_date = ?",
+            (today,),
+        )
+        row = await cursor.fetchone()
+        result["visitors_today"] = row["count"]
         return result
+
+    async def record_webapp_activity(self, telegram_id: int, username: str | None = None) -> None:
+        now = _utc_now()
+        now_value = now.isoformat()
+        today = _moscow_today(now)
+        cursor = await self._db().execute(
+            "SELECT last_seen FROM webapp_activity WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        row = await cursor.fetchone()
+        should_count_visit = True
+        if row and row["last_seen"]:
+            try:
+                last_seen = datetime.fromisoformat(row["last_seen"])
+                should_count_visit = now - last_seen > timedelta(minutes=30)
+            except ValueError:
+                should_count_visit = True
+        await self._db().execute(
+            """
+            INSERT INTO webapp_activity (telegram_id, username, first_seen, last_seen)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(telegram_id) DO UPDATE SET
+                username = COALESCE(excluded.username, webapp_activity.username),
+                last_seen = excluded.last_seen
+            """,
+            (telegram_id, username, now_value, now_value),
+        )
+        if should_count_visit:
+            await self._db().execute(
+                """
+                INSERT INTO webapp_visits (telegram_id, visited_at, visit_date)
+                VALUES (?, ?, ?)
+                """,
+                (telegram_id, now_value, today),
+            )
+        await self._db().commit()
 
     async def upsert_news_item(self, item: dict) -> None:
         await self._db().execute(
@@ -258,3 +339,14 @@ class Database:
     async def delete_news_item(self, source_id: str) -> None:
         await self._db().execute("DELETE FROM news_items WHERE source_id = ?", (source_id,))
         await self._db().commit()
+
+
+MOSCOW_TZ = timezone(timedelta(hours=3))
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _moscow_today(now: datetime | None = None) -> str:
+    return (now or _utc_now()).astimezone(MOSCOW_TZ).date().isoformat()

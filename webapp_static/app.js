@@ -6,6 +6,7 @@ const initData = tg?.initData || "";
 const params = new URLSearchParams(location.search);
 const debugUserId = params.get("telegram_id");
 const authSig = params.get("auth_sig");
+const botUsername = "rbxnotifybot";
 
 const state = {
   view: "home",
@@ -66,11 +67,15 @@ document.querySelector("#gameSearch").addEventListener("keydown", (event) => {
 document.querySelector("#chatSearchBtn").addEventListener("click", () => renderChats());
 document.querySelector("#chatSearch").addEventListener("input", () => renderChats());
 
+recordActivity();
+setInterval(recordActivity, 60000);
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
 
   if (button.dataset.action === "go") setView(button.dataset.view);
+  if (button.dataset.action === "invite") inviteFriends();
   if (button.dataset.action === "games-mode") setGamesMode(button.dataset.mode);
   if (button.dataset.action === "subscribe") {
     subscribe(Number(button.dataset.universeId), Number(button.dataset.placeId), button.dataset.name || "Roblox Game", button);
@@ -85,10 +90,23 @@ function setView(view) {
   stopCountdown();
   state.previousView = state.view;
   state.view = view;
+  document.querySelector(".app").dataset.view = view;
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.id === view));
   document.querySelector("#screenTitle").textContent = titles[view] || "Главная";
   document.querySelector("#backBtn").classList.toggle("visible", view !== "home");
   loadCurrent();
+}
+
+function inviteFriends() {
+  const ref = debugUserId ? `?start=ref_${encodeURIComponent(debugUserId)}` : "";
+  const botLink = `https://t.me/${botUsername}${ref}`;
+  const text = "RBX Notify помогает отслеживать события Roblox, новости и обновления игр.";
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${encodeURIComponent(text)}`;
+  if (tg?.openTelegramLink) {
+    tg.openTelegramLink(shareUrl);
+    return;
+  }
+  location.href = shareUrl;
 }
 
 async function loadCurrent(force = false) {
@@ -101,6 +119,14 @@ async function loadCurrent(force = false) {
   if (state.view === "games") {
     if (state.gamesMode === "subs") await loadSubscriptions();
     if (state.gamesMode === "search" && (!state.popularGames.length || force)) await loadPopularGames();
+  }
+}
+
+async function recordActivity() {
+  try {
+    await api("/api/activity", { method: "POST", body: "{}" });
+  } catch (error) {
+    // Activity is only for admin stats; the app should keep working without it.
   }
 }
 

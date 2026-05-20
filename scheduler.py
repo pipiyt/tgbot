@@ -54,13 +54,12 @@ def event_time_label(start_value: str | None, end_value: str | None = None) -> s
     return format_time(start_value)
 
 
-def build_event_text(game_name: str, place_id: int, playing: int, event: dict, prefix: str = "🔔 Roblox Event") -> str:
+def build_event_text(game_name: str, place_id: int, event: dict, prefix: str = "🔔 Roblox Event") -> str:
     return (
         f"{prefix}\n"
         f"🎮 Игра: {game_name}\n"
         f"🎁 Событие: {event['title']}\n"
         f"🕒 Старт: {format_time(event.get('start_time'))}\n"
-        f"👥 Онлайн: {playing}\n"
         f"▶️ Играть: https://www.roblox.com/games/{place_id}"
     )
 
@@ -139,7 +138,6 @@ class EventScheduler:
             text = build_event_text(
                 game_name=sub["game_name"],
                 place_id=int(sub["place_id"]),
-                playing=playing,
                 event=event,
                 prefix=prefix,
             )
