@@ -282,7 +282,7 @@ async def debug_roblox(message: Message) -> None:
     lines = ["Roblox debug:"]
     for title, url, params in checks:
         lines.append(await api.debug_request(title, url, params))
-    test_events = await get_game_events(383310974)
+    test_events = await get_game_events(7326934954)
     lines.append(f"events test: {len(test_events)} events")
     await message.answer("\n".join(lines))
 

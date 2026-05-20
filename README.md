@@ -69,10 +69,10 @@ UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
 PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
 OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
-EXPERIENCE_EVENTS_URL = "https://apis.roblox.com/experience-events-api/v1/universes/{universe_id}/events"
+EXPERIENCE_EVENTS_URL = "https://apis.roblox.com/virtual-events/v1/universes/{universe_id}/virtual-events"
 ```
 
-Если текущий `EXPERIENCE_EVENTS_URL` перестал отвечать или Roblox изменил формат, замените только эту константу. Код нормализует несколько распространенных вариантов ответа: `data`, `events`, `experienceEvents`, а также поля `id/eventId`, `title/name`, `startTime/startsAt`.
+Если текущий `EXPERIENCE_EVENTS_URL` перестал отвечать или Roblox изменил формат, замените только эту константу. Бот сам добавляет query-параметр `fromUtc`. Код нормализует несколько распространенных вариантов ответа: `data`, `events`, `virtualEvents`, `experienceEvents`, а также поля `id/eventId/virtualEventId`, `title/name`, `startTime/startsAt/startUtc`.
 
 Если поиск игры по названию перестал работать, проверьте `OMNI_SEARCH_URL`. Бот использует один быстрый поиск без лишних fallback-запросов, чтобы Telegram-ответ был быстрее.
 

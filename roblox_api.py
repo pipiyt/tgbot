@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp
@@ -28,7 +28,7 @@ OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
 
 # Experience Events web endpoints are not guaranteed to be stable/public.
 # Replace this template with a working endpoint if Roblox changes it.
-EXPERIENCE_EVENTS_URL = "https://apis.roblox.com/experience-events-api/v1/universes/{universe_id}/events"
+EXPERIENCE_EVENTS_URL = "https://apis.roblox.com/virtual-events/v1/universes/{universe_id}/virtual-events"
 
 ROBLOX_GAME_RE = re.compile(r"roblox\.com/games/(?P<place_id>\d+)", re.IGNORECASE)
 ROBLOX_GAME_SLUG_RE = re.compile(r"roblox\.com/games/\d+/(?P<slug>[^/?#]+)", re.IGNORECASE)
@@ -400,11 +400,13 @@ class RobloxApi:
 
     async def get_game_events(self, universe_id: int) -> list[dict]:
         url = EXPERIENCE_EVENTS_URL.format(universe_id=universe_id)
+        from_utc = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         data = await self._request_json(
             url,
             retries=1,
-            fallback=False,
-            timeout=aiohttp.ClientTimeout(total=4),
+            fallback=True,
+            params={"fromUtc": from_utc},
+            timeout=aiohttp.ClientTimeout(total=6),
         )
         if data is None:
             logger.warning("Events endpoint is unavailable for universe_id=%s", universe_id)
@@ -422,20 +424,32 @@ class RobloxApi:
         if isinstance(data, list):
             return [item for item in data if isinstance(item, dict)]
         if isinstance(data, dict):
-            for key in ("data", "events", "experienceEvents", "items", "results"):
+            for key in ("data", "events", "virtualEvents", "experienceEvents", "items", "results"):
                 value = data.get(key)
                 if isinstance(value, list):
                     return [item for item in value if isinstance(item, dict)]
+            for key in ("response", "result"):
+                nested = data.get(key)
+                if isinstance(nested, dict):
+                    events = self._extract_events_list(nested)
+                    if events:
+                        return events
         return []
 
     def _normalize_event(self, universe_id: int, item: dict) -> dict | None:
-        for nested_key in ("event", "experienceEvent", "metadata", "details"):
+        for nested_key in ("event", "virtualEvent", "experienceEvent", "metadata", "details"):
             nested = item.get(nested_key)
             if isinstance(nested, dict):
                 item = {**item, **nested}
 
-        event_id = item.get("id") or item.get("eventId") or item.get("event_id")
-        title = item.get("title") or item.get("name") or item.get("eventTitle")
+        event_id = (
+            item.get("id")
+            or item.get("eventId")
+            or item.get("event_id")
+            or item.get("virtualEventId")
+            or item.get("virtual_event_id")
+        )
+        title = item.get("title") or item.get("name") or item.get("eventTitle") or item.get("displayName")
         if not event_id or not title:
             return None
 
@@ -444,16 +458,30 @@ class RobloxApi:
             or item.get("startsAt")
             or item.get("start_time")
             or item.get("eventStartTime")
+            or item.get("eventTime")
+            or item.get("startUtc")
             or item.get("starts")
         )
-        end_time = item.get("endTime") or item.get("endsAt") or item.get("end_time") or item.get("ends")
+        end_time = (
+            item.get("endTime")
+            or item.get("endsAt")
+            or item.get("end_time")
+            or item.get("endUtc")
+            or item.get("ends")
+        )
         image_url = self._extract_event_image_url(item)
 
         return {
             "event_id": str(event_id),
             "universe_id": universe_id,
             "title": str(title),
-            "description": item.get("description") or item.get("subtitle") or item.get("caption") or "",
+            "description": (
+                item.get("description")
+                or item.get("subtitle")
+                or item.get("caption")
+                or item.get("shortDescription")
+                or ""
+            ),
             "start_time": self._normalize_time(start_time),
             "end_time": self._normalize_time(end_time),
             "image_url": image_url,
