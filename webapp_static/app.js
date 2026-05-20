@@ -34,6 +34,17 @@ document.querySelector("#gameSearchBtn").addEventListener("click", () => searchG
 document.querySelector("#gameSearch").addEventListener("keydown", (event) => {
   if (event.key === "Enter") searchGames();
 });
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+
+  if (button.dataset.action === "subscribe") {
+    subscribe(Number(button.dataset.universeId), Number(button.dataset.placeId), button.dataset.name || "Roblox Game", button);
+  }
+  if (button.dataset.action === "remove") removeSub(Number(button.dataset.id));
+  if (button.dataset.action === "events") showEvents(Number(button.dataset.id));
+  if (button.dataset.action === "back-to-subs") loadSubscriptions();
+});
 
 function setView(view) {
   state.view = view;
@@ -84,13 +95,26 @@ async function searchGames() {
   }
 }
 
-async function subscribe(universeId, placeId, name) {
-  await api("/api/subscriptions", {
-    method: "POST",
-    body: JSON.stringify({ universe_id: universeId, place_id: placeId, name }),
-  });
-  tg?.HapticFeedback?.notificationOccurred("success");
-  setView("alerts");
+async function subscribe(universeId, placeId, name, button) {
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Добавляю...";
+  }
+  try {
+    await api("/api/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ universe_id: universeId, place_id: placeId, name }),
+    });
+    tg?.HapticFeedback?.notificationOccurred("success");
+    setView("alerts");
+  } catch (error) {
+    tg?.HapticFeedback?.notificationOccurred("error");
+    showToast("Не удалось подписаться. Откройте WebApp из Telegram.");
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Подписаться";
+    }
+  }
 }
 
 async function removeSub(id) {
@@ -129,13 +153,13 @@ function newsCard(item) {
 function subscriptionCard(item) {
   return `
     <div class="card">
-      <img class="thumb" src="https://www.roblox.com/asset-thumbnail/image?assetId=${Number(item.place_id)}&width=150&height=150&format=png" alt="">
+      <img class="thumb" src="${thumbnailUrl(item.universe_id)}" alt="">
       <div>
         <h3>${escapeHtml(item.game_name)}</h3>
         <p>Подписка на обновления и события</p>
         <div class="row-actions">
-          <button class="primary" onclick="showEvents(${Number(item.id)})">События</button>
-          <button class="danger" onclick="removeSub(${Number(item.id)})">Удалить</button>
+          <button class="primary" data-action="events" data-id="${Number(item.id)}">События</button>
+          <button class="danger" data-action="remove" data-id="${Number(item.id)}">Удалить</button>
           <span class="switch"></span>
         </div>
       </div>
@@ -147,11 +171,11 @@ function searchCard(item) {
   const name = escapeAttr(item.name || "Roblox Game");
   return `
     <div class="card">
-      <img class="thumb" src="https://www.roblox.com/asset-thumbnail/image?assetId=${Number(item.place_id)}&width=150&height=150&format=png" alt="">
+      <img class="thumb" src="${thumbnailUrl(item.universe_id)}" alt="">
       <div>
         <h3>${escapeHtml(item.name)}</h3>
         <p>ID: ${Number(item.universe_id)} · онлайн ${Number(item.playing || 0)}</p>
-        <button class="primary" onclick="subscribe(${Number(item.universe_id)}, ${Number(item.place_id)}, '${name}')">Подписаться</button>
+        <button class="primary" data-action="subscribe" data-universe-id="${Number(item.universe_id)}" data-place-id="${Number(item.place_id)}" data-name="${name}">Подписаться</button>
       </div>
     </div>
   `;
@@ -179,7 +203,20 @@ function empty(text = "Пока ничего нет") {
 }
 
 function backButton() {
-  return `<button class="primary" onclick="loadSubscriptions()">← Назад</button>`;
+  return `<button class="primary" data-action="back-to-subs">← Назад</button>`;
+}
+
+function thumbnailUrl(universeId) {
+  return `/api/thumbnail/${Number(universeId) || 0}`;
+}
+
+function showToast(text) {
+  const toast = document.querySelector("#toast");
+  if (!toast) return;
+  toast.textContent = text;
+  toast.classList.add("show");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => toast.classList.remove("show"), 3500);
 }
 
 function formatDate(ts) {

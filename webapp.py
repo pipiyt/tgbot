@@ -17,7 +17,7 @@ from aiohttp import web
 
 from config import settings
 from database import Database
-from roblox_api import get_game_events, resolve_game, search_games
+from roblox_api import get_game_events, get_thumbnail, resolve_game, search_games
 from scheduler import event_time_label, parse_roblox_time
 from translator import translate_to_ru
 
@@ -39,6 +39,7 @@ class WebAppServer:
         app.router.add_get("/api/subscriptions", self.subscriptions)
         app.router.add_get("/api/subscriptions/{subscription_id}/events", self.subscription_events)
         app.router.add_get("/api/search", self.search)
+        app.router.add_get("/api/thumbnail/{universe_id}", self.thumbnail)
         app.router.add_post("/api/subscriptions", self.add_subscription)
         app.router.add_delete("/api/subscriptions/{subscription_id}", self.remove_subscription)
         app.router.add_static("/static", STATIC_DIR, append_version=True)
@@ -100,6 +101,29 @@ class WebAppServer:
                 }
             )
         return web.json_response({"items": await search_games(query)})
+
+    async def thumbnail(self, request: web.Request) -> web.Response:
+        universe_id = int(request.match_info["universe_id"])
+        image_url = await get_thumbnail(universe_id)
+        if not image_url:
+            raise web.HTTPNotFound(text="Thumbnail not found")
+
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            try:
+                async with session.get(image_url) as response:
+                    if response.status >= 400:
+                        raise web.HTTPNotFound(text="Thumbnail unavailable")
+                    body = await response.read()
+                    content_type = response.headers.get("Content-Type", "image/png")
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                raise web.HTTPNotFound(text="Thumbnail unavailable")
+
+        return web.Response(
+            body=body,
+            content_type=content_type,
+            headers={"Cache-Control": "public, max-age=21600"},
+        )
 
     async def add_subscription(self, request: web.Request) -> web.Response:
         user_id = require_user_id(request)
