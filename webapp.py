@@ -410,7 +410,14 @@ async def fetch_rss(session: aiohttp.ClientSession, url: str, category: str) -> 
         return []
     items = parse_rss(text, url, category)
     if not items:
-        logger.warning("News RSS parsed no items: %s - %s", url, text[:160].replace("\n", " "))
+        logger.warning(
+            "News RSS parsed no items: %s - item=%s ns_item=%s entry=%s - %s",
+            url,
+            text.count("<item"),
+            text.count(":item"),
+            text.count("<entry"),
+            text[:160].replace("\n", " "),
+        )
     return items
 
 
@@ -421,13 +428,19 @@ def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
         return []
 
     items = []
-    for item in root.findall(".//item")[:20]:
-        title = get_child_text(item, "title")
-        link = get_child_text(item, "link")
-        description = strip_html(get_child_text(item, "description"))
-        published = get_child_text(item, "pubDate")
+    rss_items = root.findall(".//item") or root.findall(".//{*}item")
+    for item in rss_items[:20]:
+        title = get_child_text(item, "title") or get_child_text_ns(item, "title")
+        link = get_child_text(item, "link") or get_child_text_ns(item, "link")
+        description_raw = (
+            get_child_text(item, "description")
+            or get_child_text_ns(item, "description")
+            or get_child_text_ns(item, "encoded")
+        )
+        description = strip_html(description_raw)
+        published = get_child_text(item, "pubDate") or get_child_text_ns(item, "pubDate")
         published_ts = parse_news_time(published)
-        image = find_rss_image(item)
+        image = find_rss_image(item) or find_html_image(description_raw)
         if title:
             source_id = hashlib.sha256(f"{category}|{link or title}|{published}".encode()).hexdigest()
             items.append(
@@ -449,12 +462,13 @@ def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
     for entry in root.findall(".//{*}entry")[:20]:
         title = get_child_text(entry, "title") or get_child_text_ns(entry, "title")
         link = find_atom_link(entry)
-        description = strip_html(
+        description_raw = (
             get_child_text(entry, "summary")
             or get_child_text(entry, "content")
             or get_child_text_ns(entry, "summary")
             or get_child_text_ns(entry, "content")
         )
+        description = strip_html(description_raw)
         published = (
             get_child_text(entry, "published")
             or get_child_text(entry, "updated")
@@ -462,7 +476,7 @@ def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
             or get_child_text_ns(entry, "updated")
         )
         published_ts = parse_news_time(published)
-        image = find_rss_image(entry)
+        image = find_rss_image(entry) or find_html_image(description_raw)
         if title:
             source_id = hashlib.sha256(f"{category}|{link or title}|{published}".encode()).hexdigest()
             items.append(
@@ -521,6 +535,18 @@ def strip_html(value: str) -> str:
     import re
 
     return html.unescape(re.sub(r"<[^>]+>", "", value or "")).strip()
+
+
+def find_html_image(value: str) -> str:
+    import re
+
+    match = re.search(r"<img[^>]+src=[\"']([^\"']+)[\"']", value or "", re.IGNORECASE)
+    if not match:
+        return ""
+    url = html.unescape(match.group(1))
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url if url.startswith("http") else ""
 
 
 def parse_news_time(value: str) -> float:
