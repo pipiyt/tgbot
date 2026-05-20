@@ -26,6 +26,7 @@ UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
 ASSET_THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/assets"
 OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
+POPULAR_GAMES_URL = "https://games.roblox.com/v1/games/list"
 
 # Experience Events web endpoints are not guaranteed to be stable/public.
 # Replace this template with a working endpoint if Roblox changes it.
@@ -212,6 +213,52 @@ class RobloxApi:
             return results[:limit]
 
         return []
+
+    async def get_popular_games(self, limit: int = 5) -> list[dict]:
+        data = await self._request_json(
+            POPULAR_GAMES_URL,
+            retries=1,
+            params={
+                "model.startRows": "0",
+                "model.maxRows": str(limit),
+                "model.sortPosition": "1",
+                "model.gameFilter": "default",
+                "model.timeFilter": "0",
+            },
+        )
+        results = self._normalize_popular_games(data)
+        if results:
+            return results[:limit]
+
+        fallback: list[dict] = []
+        seen: set[int] = set()
+        for query in ("Blox Fruits", "Grow a Garden", "Brookhaven", "Adopt Me", "Dress To Impress"):
+            items = await self.search_games(query, 1)
+            if not items:
+                continue
+            item = items[0]
+            universe_id = int(item.get("universe_id") or 0)
+            if universe_id and universe_id not in seen:
+                seen.add(universe_id)
+                fallback.append(item)
+        fallback.sort(key=lambda item: int(item.get("playing") or 0), reverse=True)
+        return fallback[:limit]
+
+    def _normalize_popular_games(self, data: Any) -> list[dict]:
+        if not isinstance(data, dict):
+            return []
+        raw_items = data.get("games") or data.get("data") or data.get("items") or []
+        if not isinstance(raw_items, list):
+            return []
+
+        results: list[dict] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            normalized = self._normalize_search_item(item)
+            if normalized:
+                results.append(normalized)
+        return results
 
     def _normalize_search_query(self, query: str) -> str:
         slug_match = ROBLOX_GAME_SLUG_RE.search(query)
@@ -678,3 +725,7 @@ async def get_thumbnail(universe_id: int) -> str | None:
 
 async def search_games(query: str, limit: int = 8) -> list[dict]:
     return await (await get_api()).search_games(query, limit)
+
+
+async def get_popular_games(limit: int = 5) -> list[dict]:
+    return await (await get_api()).get_popular_games(limit)

@@ -16,7 +16,7 @@ from aiohttp import web
 
 from config import settings
 from database import Database
-from roblox_api import get_game_events, get_thumbnail, resolve_game, search_games
+from roblox_api import get_game_events, get_popular_games, get_thumbnail, resolve_game, search_games
 from scheduler import event_time_label, parse_roblox_time
 from translator import translate_to_ru
 
@@ -38,6 +38,7 @@ class WebAppServer:
         app.router.add_get("/api/subscriptions", self.subscriptions)
         app.router.add_get("/api/subscriptions/{subscription_id}/events", self.subscription_events)
         app.router.add_get("/api/search", self.search)
+        app.router.add_get("/api/popular", self.popular)
         app.router.add_get("/api/thumbnail/{universe_id}", self.thumbnail)
         app.router.add_post("/api/subscriptions", self.add_subscription)
         app.router.add_delete("/api/subscriptions/{subscription_id}", self.remove_subscription)
@@ -104,6 +105,9 @@ class WebAppServer:
             )
         return web.json_response({"items": await search_games(query)})
 
+    async def popular(self, request: web.Request) -> web.Response:
+        return web.json_response({"items": await get_popular_games(5)})
+
     async def thumbnail(self, request: web.Request) -> web.Response:
         universe_id = int(request.match_info["universe_id"])
         image_url = await get_thumbnail(universe_id)
@@ -151,10 +155,29 @@ def require_user_id(request: web.Request, fallback_init_data: str = "") -> int:
             return int(user["id"])
         raise web.HTTPUnauthorized(text=f"Invalid Telegram initData: {error}")
 
-    debug_user_id = request.query.get("telegram_id")
-    if debug_user_id and settings.admin_id and int(debug_user_id) == settings.admin_id:
-        return int(debug_user_id)
+    signed_user_id = validate_signed_user(request)
+    if signed_user_id:
+        return signed_user_id
     raise web.HTTPUnauthorized(text="Invalid Telegram initData: missing")
+
+
+def validate_signed_user(request: web.Request) -> int | None:
+    user_id = request.query.get("telegram_id")
+    auth_sig = request.query.get("auth_sig")
+    if not user_id:
+        return None
+    try:
+        user_id_int = int(user_id)
+    except ValueError:
+        return None
+    if settings.admin_id and user_id_int == settings.admin_id and not auth_sig:
+        return user_id_int
+    if not auth_sig or not settings.bot_token:
+        return None
+    expected = hmac.new(settings.bot_token.encode(), f"webapp:{user_id_int}".encode(), hashlib.sha256).hexdigest()
+    if hmac.compare_digest(expected, auth_sig):
+        return user_id_int
+    return None
 
 
 def validate_init_data(init_data: str) -> tuple[dict[str, Any] | None, str]:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -8,9 +10,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 from config import settings
 
 
-def main_menu() -> ReplyKeyboardMarkup:
+def main_menu(user_id: int | None = None) -> ReplyKeyboardMarkup:
     if settings.webapp_url:
-        rows = [[KeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=webapp_url()))]]
+        rows = [[KeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=webapp_url(user_id)))]]
     else:
         rows = [[KeyboardButton(text="Приложение временно недоступно")]]
     return ReplyKeyboardMarkup(
@@ -20,11 +22,18 @@ def main_menu() -> ReplyKeyboardMarkup:
     )
 
 
-def webapp_url() -> str:
+def webapp_url(user_id: int | None = None) -> str:
     parts = urlsplit(settings.webapp_url)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["tg_v"] = str(int(time.time()))
+    if user_id and settings.bot_token:
+        query["telegram_id"] = str(user_id)
+        query["auth_sig"] = sign_webapp_user(user_id)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def sign_webapp_user(user_id: int) -> str:
+    return hmac.new(settings.bot_token.encode(), f"webapp:{user_id}".encode(), hashlib.sha256).hexdigest()
 
 
 def subscriptions_keyboard(subscriptions: list[dict]) -> InlineKeyboardMarkup | None:

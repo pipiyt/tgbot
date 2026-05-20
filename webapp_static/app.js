@@ -5,6 +5,7 @@ tg?.expand();
 const initData = tg?.initData || "";
 const params = new URLSearchParams(location.search);
 const debugUserId = params.get("telegram_id");
+const authSig = params.get("auth_sig");
 
 const state = {
   view: "home",
@@ -26,6 +27,7 @@ const titles = {
 const api = async (path, options = {}) => {
   const url = new URL(path, location.origin);
   if (debugUserId) url.searchParams.set("telegram_id", debugUserId);
+  if (authSig) url.searchParams.set("auth_sig", authSig);
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -86,7 +88,7 @@ async function loadCurrent(force = false) {
   if (state.view === "news") await loadNews(force);
   if (state.view === "games") {
     if (state.gamesMode === "subs") await loadSubscriptions();
-    if (state.gamesMode === "search" && (!state.searchResults.length || force)) await searchGames("Adopt Me");
+    if (state.gamesMode === "search" && (!state.searchResults.length || force)) await loadPopularGames();
   }
 }
 
@@ -123,9 +125,8 @@ function setGamesMode(mode) {
     button.classList.toggle("active", button.dataset.mode === mode);
   });
   document.querySelector("#searchPanel").classList.toggle("visible", mode === "search");
-  document.querySelector("#gamesSubtitle").textContent = mode === "search" ? "Популярные игры" : "Мои подписки";
   if (mode === "subs") loadSubscriptions();
-  if (mode === "search") searchGames(document.querySelector("#gameSearch").value.trim() || "Adopt Me");
+  if (mode === "search") loadPopularGames();
 }
 
 async function loadSubscriptions() {
@@ -147,12 +148,25 @@ function renderSubscriptions() {
     : empty("Подписок пока нет. Добавьте игру через поиск.");
 }
 
-async function searchGames(defaultQuery = "") {
+async function loadPopularGames() {
+  const list = document.querySelector("#gamesList");
+  document.querySelector("#gamesSubtitle").textContent = "Популярные игры";
+  list.innerHTML = skeleton("Загружаю популярные игры...");
+  try {
+    const data = await api("/api/popular");
+    state.searchResults = data.items || [];
+    list.innerHTML = state.searchResults.length ? state.searchResults.map(searchCard).join("") : empty("Популярные игры пока недоступны");
+  } catch (error) {
+    list.innerHTML = empty("Популярные игры пока недоступны");
+  }
+}
+
+async function searchGames() {
   const input = document.querySelector("#gameSearch");
-  const query = (typeof defaultQuery === "string" && defaultQuery) || input.value.trim();
+  const query = input.value.trim();
   const list = document.querySelector("#gamesList");
   if (!query) return;
-  if (!input.value.trim() && query !== "Adopt Me") input.value = query;
+  document.querySelector("#gamesSubtitle").textContent = "Результаты поиска";
   list.innerHTML = skeleton("Ищу игры...");
   try {
     const data = await api(`/api/search?q=${encodeURIComponent(query)}`);

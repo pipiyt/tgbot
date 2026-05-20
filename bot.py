@@ -60,7 +60,7 @@ async def start(message: Message) -> None:
         )
     await message.answer(
         text,
-        reply_markup=main_menu(),
+        reply_markup=main_menu(message.from_user.id if message.from_user else None),
     )
 
 
@@ -148,7 +148,7 @@ async def add_subscription_message(
         f"👥 Онлайн: {playing}\n"
         f"👁 Visits: {visits}"
     )
-    await message.answer(text, reply_markup=main_menu())
+    await message.answer(text, reply_markup=main_menu(message.from_user.id if message.from_user else None))
 
 
 @router.callback_query(F.data.startswith("pickgame:"))
