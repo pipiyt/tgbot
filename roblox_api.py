@@ -302,7 +302,7 @@ class RobloxApi:
             retries=1,
             params={
                 "searchQuery": query,
-                "verticalType": "experiences",
+                "pageType": "all",
                 "sessionId": "roblox-notification-bot",
             },
         )

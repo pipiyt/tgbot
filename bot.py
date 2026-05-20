@@ -16,6 +16,7 @@ from keyboards import main_menu, search_results_keyboard, subscriptions_keyboard
 from roblox_api import (
     GAME_SEARCH_WEB_URL,
     OMNI_SEARCH_URL,
+    PLACE_UNIVERSE_URL,
     PLACE_WEB_DETAILS_URL,
     close_api,
     get_api,
@@ -230,16 +231,21 @@ async def debug_roblox(message: Message) -> None:
     api = await get_api()
     checks = [
         (
-            "place details",
+            "place universe",
+            PLACE_UNIVERSE_URL.format(place_id=90148635862803),
+            {},
+        ),
+        (
+            "legacy place details",
             PLACE_WEB_DETAILS_URL,
-            {"assetId": "920587237"},
+            {"assetId": "90148635862803"},
         ),
         (
             "omni search",
             OMNI_SEARCH_URL,
             {
                 "searchQuery": "Adopt Me",
-                "verticalType": "experiences",
+                "pageType": "all",
                 "sessionId": "roblox-notification-bot",
             },
         ),
