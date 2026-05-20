@@ -19,12 +19,15 @@ PLACE_DETAILS_URL = "https://games.roblox.com/v1/games/multiget-place-details"
 PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
 UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
+GAME_SEARCH_URL = "https://games.roblox.com/v1/games/list"
+OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
 
 # Experience Events web endpoints are not guaranteed to be stable/public.
 # Replace this template with a working endpoint if Roblox changes it.
 EXPERIENCE_EVENTS_URL = "https://apis.roblox.com/experience-events-api/v1/universes/{universe_id}/events"
 
 ROBLOX_GAME_RE = re.compile(r"roblox\.com/games/(?P<place_id>\d+)", re.IGNORECASE)
+ROBLOX_GAME_SLUG_RE = re.compile(r"roblox\.com/games/\d+/(?P<slug>[^/?#]+)", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -88,6 +91,24 @@ class RobloxApi:
 
         return None
 
+    async def search_games(self, query: str, limit: int = 8) -> list[dict]:
+        normalized_query = self._normalize_search_query(query)
+        if not normalized_query:
+            return []
+
+        results = await self._search_games_legacy(normalized_query, limit)
+        if results:
+            return results[:limit]
+
+        results = await self._search_games_omni(normalized_query, limit)
+        return results[:limit]
+
+    def _normalize_search_query(self, query: str) -> str:
+        slug_match = ROBLOX_GAME_SLUG_RE.search(query)
+        if slug_match:
+            query = slug_match.group("slug").replace("-", " ")
+        return query.strip()
+
     def _extract_place_id(self, value: str) -> int | None:
         match = ROBLOX_GAME_RE.search(value)
         if match:
@@ -128,6 +149,107 @@ class RobloxApi:
             universe_id=int(universe_id),
             name=str(info.get("name") or "Roblox Game"),
         )
+
+    async def _search_games_legacy(self, query: str, limit: int) -> list[dict]:
+        data = await self._request_json(
+            GAME_SEARCH_URL,
+            params={
+                "model.keyword": query,
+                "model.maxRows": str(limit),
+                "model.startRows": "0",
+                "model.sortOrder": "Desc",
+            },
+        )
+        if not isinstance(data, dict):
+            return []
+
+        raw_items = data.get("games") or data.get("data") or []
+        results: list[dict] = []
+        for item in raw_items:
+            normalized = self._normalize_search_item(item)
+            if normalized:
+                results.append(normalized)
+        return results
+
+    async def _search_games_omni(self, query: str, limit: int) -> list[dict]:
+        data = await self._request_json(
+            OMNI_SEARCH_URL,
+            params={
+                "searchQuery": query,
+                "pageType": "all",
+                "sessionId": "roblox-notification-bot",
+            },
+        )
+        if not isinstance(data, dict):
+            return []
+
+        raw_items: list[dict] = []
+        for key in ("searchResults", "contents", "data"):
+            value = data.get(key)
+            if isinstance(value, list):
+                raw_items.extend(item for item in value if isinstance(item, dict))
+
+        results: list[dict] = []
+        for item in raw_items:
+            candidates = item.get("contents") if isinstance(item.get("contents"), list) else [item]
+            for candidate in candidates:
+                if isinstance(candidate, dict):
+                    normalized = self._normalize_search_item(candidate)
+                    if normalized:
+                        results.append(normalized)
+                if len(results) >= limit:
+                    return results
+        return results
+
+    def _normalize_search_item(self, item: dict) -> dict | None:
+        universe_id = (
+            item.get("universeId")
+            or item.get("universe_id")
+            or item.get("id")
+            or item.get("universe")
+        )
+        place_id = (
+            item.get("placeId")
+            or item.get("rootPlaceId")
+            or item.get("place_id")
+            or item.get("rootPlace")
+        )
+        name = item.get("name") or item.get("title") or item.get("displayName")
+        if not universe_id or not name:
+            return None
+
+        try:
+            universe_id_int = int(universe_id)
+        except (TypeError, ValueError):
+            return None
+
+        place_id_int = 0
+        if place_id:
+            try:
+                place_id_int = int(place_id)
+            except (TypeError, ValueError):
+                place_id_int = 0
+
+        playing = item.get("playing") or item.get("playerCount") or item.get("onlineCount") or 0
+        visits = item.get("visits") or item.get("totalVisits") or 0
+
+        if not place_id_int:
+            # Search APIs sometimes return only universeId. Fill rootPlaceId from game details.
+            return {
+                "universe_id": universe_id_int,
+                "place_id": 0,
+                "name": str(name),
+                "playing": int(playing or 0),
+                "visits": int(visits or 0),
+            }
+
+        return {
+            "universe_id": universe_id_int,
+            "place_id": place_id_int,
+            "name": str(name),
+            "playing": int(playing or 0),
+            "visits": int(visits or 0),
+        }
 
     async def get_game_info(self, universe_id: int) -> dict | None:
         data = await self._request_json(UNIVERSE_DETAILS_URL, params={"universeIds": str(universe_id)})
@@ -255,3 +377,7 @@ async def get_game_events(universe_id: int) -> list[dict]:
 
 async def get_thumbnail(universe_id: int) -> str | None:
     return await (await get_api()).get_thumbnail(universe_id)
+
+
+async def search_games(query: str, limit: int = 8) -> list[dict]:
+    return await (await get_api()).search_games(query, limit)

@@ -12,8 +12,8 @@ from aiogram.types import CallbackQuery, Message
 
 from config import settings
 from database import Database
-from keyboards import main_menu, subscriptions_keyboard
-from roblox_api import close_api, get_game_info, get_thumbnail, resolve_game
+from keyboards import main_menu, search_results_keyboard, subscriptions_keyboard
+from roblox_api import close_api, get_game_info, get_thumbnail, resolve_game, search_games
 from scheduler import EventScheduler, format_time
 
 
@@ -72,25 +72,49 @@ async def add_game_value(message: Message, state: FSMContext) -> None:
 
     game = await resolve_game(message.text)
     if not game:
+        results = await search_games(message.text)
+        if results:
+            await message.answer(
+                "Я нашел несколько игр. Выберите нужную:",
+                reply_markup=search_results_keyboard(results),
+            )
+            return
         await message.answer(
             "Не удалось найти игру. Проверьте ссылку или ID.\n"
-            "Пример: https://www.roblox.com/games/920587237 или 920587237"
+            "Можно отправить ссылку, placeId, universeId или название игры."
         )
         return
 
-    info = await get_game_info(game.universe_id) or {}
-    thumbnail = await get_thumbnail(game.universe_id)
-    game_name = info.get("name") or game.name
-    place_id = int(info.get("place_id") or game.place_id)
-    added = await db.add_subscription(message.from_user.id, game.universe_id, place_id, game_name)
+    await add_subscription_message(
+        message=message,
+        universe_id=game.universe_id,
+        place_id=game.place_id,
+        fallback_name=game.name,
+    )
     await state.clear()
 
+
+async def add_subscription_message(
+    message: Message,
+    universe_id: int,
+    place_id: int,
+    fallback_name: str = "Roblox Game",
+) -> None:
+    info = await get_game_info(universe_id) or {}
+    thumbnail = await get_thumbnail(universe_id)
+    game_name = info.get("name") or fallback_name
+    final_place_id = int(info.get("place_id") or place_id)
+    if not final_place_id:
+        await message.answer("Нашел игру, но Roblox не вернул placeId. Попробуйте ссылку на игру.")
+        return
+
+    added = await db.add_subscription(message.from_user.id, universe_id, final_place_id, game_name)
     status = "Подписка добавлена." if added else "Эта игра уже есть в ваших подписках."
     text = (
         f"{status}\n\n"
         f"🎮 {game_name}\n"
-        f"Universe ID: {game.universe_id}\n"
-        f"Place ID: {place_id}\n"
+        f"Universe ID: {universe_id}\n"
+        f"Place ID: {final_place_id}\n"
         f"👥 Онлайн: {info.get('playing', 0)}\n"
         f"👁 Visits: {info.get('visits', 0)}"
     )
@@ -98,6 +122,24 @@ async def add_game_value(message: Message, state: FSMContext) -> None:
         await message.answer_photo(thumbnail, caption=text, reply_markup=main_menu())
     else:
         await message.answer(text, reply_markup=main_menu())
+
+
+@router.callback_query(F.data.startswith("pickgame:"))
+async def pick_game_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Не удалось выбрать игру")
+        return
+
+    await state.clear()
+    universe_id = int(parts[1])
+    place_id = int(parts[2])
+    await callback.answer("Добавляю игру")
+    await add_subscription_message(
+        message=callback.message,
+        universe_id=universe_id,
+        place_id=place_id,
+    )
 
 
 @router.message(Command("subscriptions"))
