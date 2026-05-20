@@ -22,7 +22,7 @@ from roblox_api import (
     resolve_game,
     search_games,
 )
-from scheduler import EventScheduler, format_time
+from scheduler import EventScheduler, event_time_label, format_time
 
 
 logging.basicConfig(
@@ -167,14 +167,6 @@ async def subscriptions(message: Message) -> None:
     if not items:
         await message.answer("У вас пока нет подписок. Нажмите ➕ Добавить игру.")
         return
-    lines = ["Ваши подписки:"]
-    for item in items:
-        lines.append(
-            f"\n#{item['id']} 🎮 {item['game_name']}\n"
-            f"Universe ID: {item['universe_id']}\n"
-            f"▶️ https://www.roblox.com/games/{item['place_id']}"
-        )
-    await message.answer("\n".join(lines), reply_markup=subscriptions_keyboard(items))
     await send_subscription_events(message, items)
 
 
@@ -196,13 +188,19 @@ async def send_subscription_events(message: Message, subscriptions_items: list[d
                 f"🎮 Игра: {item['game_name']}\n"
                 f"🎁 Событие: {event['title']}\n"
                 f"📝 Описание: {event.get('description') or 'нет описания'}\n"
-                f"🕒 Старт: {format_time(event.get('start_time'))}"
+                f"🕒 {event_time_label(event.get('start_time'), event.get('end_time'))}"
             )
             image_url = event.get("image_url")
             if image_url:
-                await message.answer_photo(image_url, caption=text)
+                await message.answer_photo(image_url, caption=telegram_caption(text))
             else:
                 await message.answer(text)
+
+
+def telegram_caption(text: str) -> str:
+    if len(text) <= 1024:
+        return text
+    return text[:1021] + "..."
 
 
 @router.message(Command("remove"))

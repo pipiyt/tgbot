@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 
@@ -12,6 +12,7 @@ from roblox_api import get_game_events, get_game_info
 
 
 logger = logging.getLogger(__name__)
+MOSCOW_TZ = timezone(timedelta(hours=3))
 
 
 def parse_roblox_time(value: str | None) -> datetime | None:
@@ -33,6 +34,24 @@ def format_time(value: str | None) -> str:
     if not parsed:
         return "не указано"
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def format_time(value: str | None) -> str:
+    parsed = parse_roblox_time(value)
+    if not parsed:
+        return "не указано"
+    return parsed.astimezone(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M МСК")
+
+
+def event_time_label(start_value: str | None, end_value: str | None = None) -> str:
+    start = parse_roblox_time(start_value)
+    end = parse_roblox_time(end_value)
+    now = datetime.now(timezone.utc)
+    if start and start <= now and (end is None or now < end):
+        return "Уже идет"
+    if end and now >= end:
+        return "Завершено"
+    return format_time(start_value)
 
 
 def build_event_text(game_name: str, place_id: int, playing: int, event: dict, prefix: str = "🔔 Roblox Event") -> str:
