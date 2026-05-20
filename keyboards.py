@@ -6,15 +6,10 @@ from config import settings
 
 
 def main_menu() -> ReplyKeyboardMarkup:
-    rows = []
     if settings.webapp_url:
-        rows.append([KeyboardButton(text="Открыть меню", web_app=WebAppInfo(url=settings.webapp_url))])
-    rows.extend(
-        [
-            [KeyboardButton(text="➕ Добавить игру"), KeyboardButton(text="📋 Мои подписки")],
-            [KeyboardButton(text="🔥 Ближайшие события"), KeyboardButton(text="⚙️ Настройки")],
-        ]
-    )
+        rows = [[KeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=settings.webapp_url))]]
+    else:
+        rows = [[KeyboardButton(text="Приложение временно недоступно")]]
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,

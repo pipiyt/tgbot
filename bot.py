@@ -48,11 +48,25 @@ class AddGame(StatesGroup):
 @router.message(CommandStart())
 async def start(message: Message) -> None:
     await db.add_user(message.from_user.id, message.from_user.username if message.from_user else None)
+    if settings.webapp_url:
+        text = (
+            "Привет! Я Roblox Notification бот.\n\n"
+            "Все функции теперь в приложении: новости, подписки, события и настройки."
+        )
+    else:
+        text = (
+            "Привет! Приложение пока недоступно.\n\n"
+            "Администратор еще не настроил WEBAPP_URL и HTTPS."
+        )
     await message.answer(
-        "Привет! Я Roblox Notification бот.\n\n"
-        "Добавь Roblox игру по ссылке, placeId или universeId, а я буду следить за Experience Events.",
+        text,
         reply_markup=main_menu(),
     )
+
+
+@router.message(F.text == "Приложение временно недоступно")
+async def webapp_unavailable(message: Message) -> None:
+    await message.answer("Mini App заработает после настройки HTTPS-домена.")
 
 
 @router.message(F.text == "➕ Добавить игру")
@@ -309,8 +323,6 @@ async def debug_roblox(message: Message) -> None:
     lines = ["Roblox debug:"]
     for title, url, params in checks:
         lines.append(await api.debug_request(title, url, params))
-    test_events = await get_game_events(7326934954)
-    lines.append(f"events test: {len(test_events)} events")
     await message.answer("\n".join(lines))
 
 

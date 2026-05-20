@@ -71,11 +71,11 @@ class RobloxApi:
             try:
                 async with self.session.get(url, **kwargs) as response:
                     if response.status == 404:
-                        logger.warning("Roblox endpoint returned 404: %s", url)
+                        logger.debug("Roblox endpoint returned 404: %s", url)
                         return None
                     if response.status >= 400:
                         body = await response.text()
-                        logger.warning(
+                        logger.debug(
                             "Roblox endpoint returned %s: %s - %s",
                             response.status,
                             url,
@@ -86,7 +86,7 @@ class RobloxApi:
                     return await response.json()
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_error = exc
-                logger.warning(
+                logger.debug(
                     "Roblox request failed (%s/%s): %s - %s: %r",
                     attempt,
                     max_retries,
@@ -96,7 +96,7 @@ class RobloxApi:
                 )
                 if attempt < max_retries:
                     await asyncio.sleep(min(attempt, 3))
-        logger.error("Roblox request exhausted retries: %s - %s", url, last_error)
+        logger.debug("Roblox request exhausted retries: %s - %s", url, last_error)
         if not fallback:
             return None
         return await asyncio.to_thread(self._request_json_urllib, url, kwargs.get("params"))
@@ -122,7 +122,7 @@ class RobloxApi:
                     return None
                 return json.loads(raw)
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
-            logger.warning("Roblox urllib fallback failed: %s - %s: %r", url, type(exc).__name__, exc)
+            logger.debug("Roblox urllib fallback failed: %s - %s: %r", url, type(exc).__name__, exc)
             return None
 
     async def debug_request(self, title: str, url: str, params: dict | None = None) -> str:
@@ -410,7 +410,7 @@ class RobloxApi:
             timeout=aiohttp.ClientTimeout(total=6),
         )
         if data is None:
-            logger.warning("Events endpoint is unavailable for universe_id=%s", universe_id)
+            logger.debug("Events endpoint is unavailable for universe_id=%s", universe_id)
             return []
 
         raw_events = self._extract_events_list(data)

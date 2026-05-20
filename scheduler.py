@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from aiogram import Bot
 
 from database import Database
-from roblox_api import get_game_events, get_game_info
+from roblox_api import get_game_events
 
 
 logger = logging.getLogger(__name__)
@@ -103,8 +103,7 @@ class EventScheduler:
             grouped[int(sub["universe_id"])].append(sub)
 
         for universe_id, subscribers in grouped.items():
-            game_info = await get_game_info(universe_id) or {}
-            playing = int(game_info.get("playing") or 0)
+            playing = 0
             events = await get_game_events(universe_id)
             if not events:
                 continue
