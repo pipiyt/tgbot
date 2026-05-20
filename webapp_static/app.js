@@ -16,6 +16,7 @@ const state = {
   subscriptions: [],
   popularGames: [],
   searchResults: [],
+  countdownTimer: null,
 };
 
 const titles = {
@@ -77,6 +78,7 @@ document.addEventListener("click", (event) => {
 });
 
 function setView(view) {
+  stopCountdown();
   state.previousView = state.view;
   state.view = view;
   document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("active", screen.id === view));
@@ -296,6 +298,7 @@ function detailsSkeleton(sub) {
 
 function detailsView(sub, events, message = "") {
   const latest = events[0];
+  const countdownEvent = getCountdownEvent(events);
   return `
     <section class="details-hero">
       <img src="${thumbnailUrl(sub.universe_id)}" alt="">
@@ -310,10 +313,11 @@ function detailsView(sub, events, message = "") {
       <h2>Что ты будешь получать:</h2>
       <p>✓ Обновления игры</p>
       <p>✓ Новые ивенты</p>
-      <p>✓ Изменения баланса</p>
       <p>✓ Коды и награды</p>
       <p>✓ Анонсы и новости</p>
     </section>
+
+    ${countdownEvent ? countdownPanel(countdownEvent) : ""}
 
     <section class="info-panel">
       <h2>Последнее событие</h2>
@@ -323,7 +327,7 @@ function detailsView(sub, events, message = "") {
               ${latest.image_url ? `<img src="${escapeAttr(latest.image_url)}" alt="">` : ""}
               <span>
                 <strong>${escapeHtml(latest.title)}</strong>
-                <small>${escapeHtml(latest.description_ru || latest.description || "Новое событие")}</small>
+                <small>${escapeHtml(compactText(latest.description_ru || latest.description || "Новое событие", 160))}</small>
                 <em>${escapeHtml(latest.time_label || "")}</em>
               </span>
             </article>`
@@ -333,6 +337,102 @@ function detailsView(sub, events, message = "") {
 
     <button class="danger-wide" type="button" data-action="remove" data-id="${Number(sub.id)}">Отписаться</button>
   `;
+}
+
+function countdownPanel(event) {
+  setTimeout(() => startCountdown(event), 0);
+  return `
+    <section class="countdown-panel" data-countdown>
+      <div class="countdown-ring"><span data-countdown-days>0</span></div>
+      <div>
+        <h2 data-countdown-title>До ближайшего события</h2>
+        <strong>${escapeHtml(event.title || "Событие")}</strong>
+        <p data-countdown-value>Считаю время...</p>
+      </div>
+    </section>
+  `;
+}
+
+function getCountdownEvent(events) {
+  const now = Date.now();
+  const withDates = events
+    .map((event) => ({
+      ...event,
+      startMs: parseEventTime(event.start_time),
+      endMs: parseEventTime(event.end_time),
+    }))
+    .filter((event) => event.startMs || event.endMs);
+
+  const active = withDates
+    .filter((event) => event.startMs && event.startMs <= now && (!event.endMs || event.endMs > now))
+    .sort((a, b) => (a.endMs || Number.MAX_SAFE_INTEGER) - (b.endMs || Number.MAX_SAFE_INTEGER))[0];
+  if (active) return active;
+
+  return withDates
+    .filter((event) => event.startMs && event.startMs > now)
+    .sort((a, b) => a.startMs - b.startMs)[0];
+}
+
+function startCountdown(event) {
+  stopCountdown();
+  updateCountdown(event);
+  state.countdownTimer = setInterval(() => updateCountdown(event), 1000);
+}
+
+function stopCountdown() {
+  if (state.countdownTimer) {
+    clearInterval(state.countdownTimer);
+    state.countdownTimer = null;
+  }
+}
+
+function updateCountdown(event) {
+  const panel = document.querySelector("[data-countdown]");
+  if (!panel) {
+    stopCountdown();
+    return;
+  }
+  const now = Date.now();
+  const title = panel.querySelector("[data-countdown-title]");
+  const value = panel.querySelector("[data-countdown-value]");
+  const days = panel.querySelector("[data-countdown-days]");
+  const isActive = event.startMs && event.startMs <= now && (!event.endMs || event.endMs > now);
+
+  if (isActive) {
+    title.textContent = "Событие уже идёт";
+    value.textContent = event.endMs ? `Закончится через ${formatCountdown(event.endMs - now)}` : "Новых обновлений пока нет";
+    days.textContent = "LIVE";
+    panel.classList.add("live");
+    return;
+  }
+
+  const diff = Math.max(0, (event.startMs || now) - now);
+  title.textContent = "До ближайшего события";
+  value.textContent = diff > 0 ? formatCountdown(diff) : "Событие уже идёт";
+  days.textContent = Math.floor(diff / 86400000);
+  panel.classList.remove("live");
+}
+
+function parseEventTime(value) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (days) return `${days} д ${hours} ч ${minutes} мин`;
+  if (hours) return `${hours} ч ${minutes} мин ${seconds} сек`;
+  return `${minutes} мин ${seconds} сек`;
+}
+
+function compactText(value, limit) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit - 1).trim()}…` : text;
 }
 
 function thumbnailUrl(universeId) {

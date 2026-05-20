@@ -434,15 +434,106 @@ button:disabled {
   color: var(--good);
 }
 
+.countdown-panel {
+  position: relative;
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(122, 76, 245, 0.22), rgba(17, 26, 43, 0.96));
+  border: 1px solid rgba(154, 120, 255, 0.28);
+  border-radius: 8px;
+}
+
+.countdown-panel::after {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  background: conic-gradient(from 0deg, transparent, rgba(154, 120, 255, 0.18), transparent 32%);
+  animation: countdownSweep 5s linear infinite;
+}
+
+.countdown-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.countdown-panel h2,
+.countdown-panel p {
+  margin-bottom: 0;
+}
+
+.countdown-panel p {
+  margin-top: 5px;
+  color: #d7def5;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.countdown-ring {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  color: white;
+  background: radial-gradient(circle at center, #111a2b 55%, transparent 56%),
+    conic-gradient(var(--accent-2), var(--good), var(--accent-2));
+  border-radius: 50%;
+  animation: countdownPulse 1.8s ease-in-out infinite;
+}
+
+.countdown-ring span {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.countdown-panel.live {
+  border-color: rgba(53, 210, 118, 0.42);
+  background: linear-gradient(135deg, rgba(53, 210, 118, 0.18), rgba(17, 26, 43, 0.96));
+}
+
+.countdown-panel.live .countdown-ring {
+  background: radial-gradient(circle at center, #111a2b 55%, transparent 56%),
+    conic-gradient(var(--good), #8affba, var(--good));
+}
+
 .event-row {
   display: grid;
   grid-template-columns: 62px 1fr;
   gap: 10px;
+  align-items: start;
 }
 
 .event-row img {
   width: 62px;
   height: 62px;
+}
+
+.event-row strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.event-row small {
+  display: -webkit-box;
+  margin-top: 4px;
+  max-height: 48px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-height: 1.35;
+}
+
+@keyframes countdownPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes countdownSweep {
+  to { transform: rotate(360deg); }
 }
 
 .muted {
