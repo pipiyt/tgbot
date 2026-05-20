@@ -505,7 +505,11 @@ button:disabled {
   grid-template-columns: 62px 1fr;
   gap: 10px;
   align-items: start;
+  width: 100%;
   padding: 8px 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
   border-top: 1px solid var(--line);
 }
 
@@ -549,6 +553,35 @@ button:disabled {
 .event-row em {
   margin-top: 5px;
   color: var(--accent-2);
+}
+
+.event-detail-hero {
+  margin-bottom: 10px;
+}
+
+.event-detail-hero img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #090f1d;
+}
+
+.event-detail-panel h2 {
+  margin-bottom: 4px;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.event-detail-panel em {
+  margin-bottom: 10px;
+  color: var(--accent-2);
+}
+
+.event-detail-panel p {
+  margin-bottom: 0;
+  line-height: 1.5;
 }
 
 @keyframes countdownPulse {

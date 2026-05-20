@@ -16,6 +16,8 @@ const state = {
   subscriptions: [],
   popularGames: [],
   searchResults: [],
+  currentSub: null,
+  currentEvents: [],
   countdownTimer: null,
 };
 
@@ -24,6 +26,7 @@ const titles = {
   news: "Новости",
   games: "События в играх",
   gameDetails: "События в играх",
+  eventDetails: "Событие",
 };
 
 const api = async (path, options = {}) => {
@@ -47,6 +50,10 @@ const api = async (path, options = {}) => {
 
 document.querySelector("#backBtn").addEventListener("click", () => {
   if (state.view === "home") return;
+  if (state.view === "eventDetails") {
+    setView("gameDetails");
+    return;
+  }
   setView(state.view === "gameDetails" ? "games" : "home");
 });
 document.querySelector("#refreshBtn").addEventListener("click", () => loadCurrent(true));
@@ -75,6 +82,7 @@ document.addEventListener("click", (event) => {
   }
   if (button.dataset.action === "remove") removeSub(Number(button.dataset.id), button);
   if (button.dataset.action === "details") showDetails(Number(button.dataset.id));
+  if (button.dataset.action === "event-detail") showEventDetails(Number(button.dataset.index));
 });
 
 function setView(view) {
@@ -89,6 +97,10 @@ function setView(view) {
 
 async function loadCurrent(force = false) {
   if (state.view === "news") await loadNews(force);
+  if (state.view === "gameDetails" && state.currentEvents.length) {
+    const event = getCountdownEvent(state.currentEvents);
+    if (event) startCountdown(event);
+  }
   if (state.view === "games") {
     if (state.gamesMode === "subs") await loadSubscriptions();
     if (state.gamesMode === "search" && (!state.popularGames.length || force)) await loadPopularGames();
@@ -232,12 +244,15 @@ async function removeSub(id, button) {
 async function showDetails(id) {
   const sub = state.subscriptions.find((item) => Number(item.id) === id);
   if (!sub) return;
+  state.currentSub = sub;
+  state.currentEvents = [];
   setView("gameDetails");
   const body = document.querySelector("#detailsBody");
   body.innerHTML = detailsSkeleton(sub);
   try {
     const data = await api(`/api/subscriptions/${id}/events`);
-    body.innerHTML = detailsView(sub, data.items || []);
+    state.currentEvents = sortEvents(data.items || []);
+    body.innerHTML = detailsView(sub, state.currentEvents);
   } catch (error) {
     body.innerHTML = detailsView(sub, [], "Не удалось загрузить события");
   }
@@ -326,37 +341,70 @@ function detailsView(sub, events, message = "") {
 
     <section class="info-panel">
       <h2>Последнее событие</h2>
-      ${visibleEvents.length ? visibleEvents.map(eventCard).join("") : `<p class="muted">${escapeHtml(message || "Активных событий пока нет")}</p>`}
+      ${visibleEvents.length ? visibleEvents.map((event, index) => eventCard(event, sub, index)).join("") : `<p class="muted">${escapeHtml(message || "Активных событий пока нет")}</p>`}
     </section>
 
     <button class="danger-wide" type="button" data-action="remove" data-id="${Number(sub.id)}">Отписаться</button>
   `;
 }
 
-function eventCard(event) {
+function eventCard(event, sub, index) {
   const status = eventStatus(event);
   return `
-    <article class="event-row">
-      ${event.image_url ? `<img src="${escapeAttr(event.image_url)}" alt="">` : `<span class="event-placeholder">EV</span>`}
+    <button class="event-row" type="button" data-action="event-detail" data-index="${Number(index)}">
+      <img src="${eventImage(event, sub)}" alt="">
       <span>
         <strong>${escapeHtml(event.title || "Событие")}</strong>
         <small>${escapeHtml(eventDescription(event))}</small>
         <em>${escapeHtml(status)}</em>
       </span>
-    </article>
+    </button>
   `;
+}
+
+function showEventDetails(index) {
+  const event = state.currentEvents[index];
+  if (!event || !state.currentSub) return;
+  setView("eventDetails");
+  document.querySelector("#eventDetailsBody").innerHTML = eventDetailsView(event, state.currentSub);
+}
+
+function eventDetailsView(event, sub) {
+  return `
+    <section class="event-detail-hero">
+      <img src="${eventImage(event, sub)}" alt="">
+    </section>
+
+    <section class="info-panel event-detail-panel">
+      <h2>${escapeHtml(event.title || "Событие")}</h2>
+      <em>${escapeHtml(eventStatus(event))}</em>
+      <p>${escapeHtml(eventDescriptionFull(event))}</p>
+    </section>
+  `;
+}
+
+function eventImage(event, sub) {
+  return escapeAttr(event.image_url || thumbnailUrl(sub.universe_id));
 }
 
 function eventDescription(event) {
   const raw = event.description_ru || event.description || "";
-  const cleaned = String(raw)
+  const cleaned = cleanEventText(raw);
+  if (!cleaned) return "Подробности события скоро появятся.";
+  return compactText(cleaned, 120);
+}
+
+function eventDescriptionFull(event) {
+  return cleanEventText(event.description_ru || event.description || "") || "Подробности события скоро появятся.";
+}
+
+function cleanEventText(value) {
+  return String(value || "")
     .replace(/[\u{1F300}-\u{1FAFF}]/gu, " ")
     .replace(/[•·]+/g, " ")
     .replace(/\s*-\s*/g, ". ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned) return "Подробности события скоро появятся.";
-  return compactText(cleaned, 120);
 }
 
 function sortEvents(events) {
