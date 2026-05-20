@@ -24,6 +24,7 @@ from roblox_api import (
 )
 from scheduler import EventScheduler, event_time_label, format_time, parse_roblox_time
 from translator import translate_to_ru
+from webapp import WebAppServer
 from datetime import datetime, timezone
 
 
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 db = Database(settings.db_path)
 scheduler: EventScheduler | None = None
+webapp_server: WebAppServer | None = None
 search_cache: dict[int, dict[int, dict]] = {}
 
 
@@ -333,10 +335,17 @@ async def main() -> None:
     scheduler = EventScheduler(bot, db, settings.check_interval_seconds)
     scheduler.start()
 
+    global webapp_server
+    if settings.webapp_url:
+        webapp_server = WebAppServer(db)
+        await webapp_server.start()
+
     try:
         logger.info("Bot started")
         await dp.start_polling(bot)
     finally:
+        if webapp_server:
+            await webapp_server.stop()
         if scheduler:
             await scheduler.stop()
         await close_api()

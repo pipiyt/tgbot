@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roblox Notification</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Roblox Notification</p>
+        <h1>Меню бота</h1>
+      </div>
+      <button class="icon-btn" id="refreshBtn" title="Обновить">⟳</button>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-view="news">Новости</button>
+      <button class="tab" data-view="alerts">Уведомления</button>
+      <button class="tab" data-view="add">Добавить</button>
+      <button class="tab" data-view="settings">Настройки</button>
+    </nav>
+
+    <section id="news" class="view active">
+      <div class="section-title">
+        <h2>Новости Roblox</h2>
+        <span id="newsCount"></span>
+      </div>
+      <div id="newsList" class="list"></div>
+    </section>
+
+    <section id="alerts" class="view">
+      <div class="section-title">
+        <h2>Уведомления в играх</h2>
+      </div>
+      <div id="subsList" class="list"></div>
+    </section>
+
+    <section id="add" class="view">
+      <div class="searchbox">
+        <input id="gameSearch" type="search" placeholder="Поиск игры по названию или ID...">
+        <button id="gameSearchBtn">Найти</button>
+      </div>
+      <div id="searchResults" class="list"></div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="panel">
+        <h2>Настройки</h2>
+        <p>Новости берутся из RSS-источников на сервере. Источники меняются в <code>NEWS_RSS_URLS</code>.</p>
+        <p>Для Twitter/X можно подключить RSS-мост или свой endpoint без изменения интерфейса.</p>
+      </div>
+    </section>
+  </main>
+
+  <template id="emptyTpl">
+    <div class="empty">Пока ничего нет</div>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

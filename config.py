@@ -27,6 +27,10 @@ class Settings:
     check_interval_seconds: int
     http_timeout_seconds: int
     http_retries: int
+    webapp_url: str
+    webapp_host: str
+    webapp_port: int
+    news_rss_urls: tuple[str, ...]
 
 
 settings = Settings(
@@ -36,4 +40,12 @@ settings = Settings(
     check_interval_seconds=_get_int("CHECK_INTERVAL_SECONDS", 60),
     http_timeout_seconds=_get_int("HTTP_TIMEOUT_SECONDS", 5),
     http_retries=_get_int("HTTP_RETRIES", 1),
+    webapp_url=os.getenv("WEBAPP_URL", "").rstrip("/"),
+    webapp_host=os.getenv("WEBAPP_HOST", "0.0.0.0"),
+    webapp_port=_get_int("WEBAPP_PORT", 8080),
+    news_rss_urls=tuple(
+        url.strip()
+        for url in os.getenv("NEWS_RSS_URLS", "https://blog.roblox.com/feed/").split(",")
+        if url.strip()
+    ),
 )

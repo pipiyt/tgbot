@@ -33,6 +33,10 @@ DB_PATH=roblox_notifications.sqlite3
 CHECK_INTERVAL_SECONDS=60
 HTTP_TIMEOUT_SECONDS=5
 HTTP_RETRIES=1
+WEBAPP_URL=https://your-domain.example
+WEBAPP_HOST=0.0.0.0
+WEBAPP_PORT=8080
+NEWS_RSS_URLS=https://blog.roblox.com/feed/
 ```
 
 Узнать свой Telegram ID можно через ботов вроде `@userinfobot`.
@@ -58,6 +62,27 @@ python bot.py
 ```
 
 После запуска откройте своего бота в Telegram, нажмите `/start` и добавьте Roblox игру.
+
+## Telegram WebApp
+
+Если задать `WEBAPP_URL`, бот добавит кнопку `Открыть меню`. Она открывает WebApp с разделами:
+
+- Новости Roblox
+- Уведомления в играх
+- Добавление игры
+- Настройки
+
+WebApp сервер запускается вместе с ботом на `WEBAPP_HOST:WEBAPP_PORT`. Для Telegram нужен публичный HTTPS URL. Обычно на VPS ставят Nginx и проксируют домен на локальный порт `8080`.
+
+Пример `.env`:
+
+```env
+WEBAPP_URL=https://bot.example.com
+WEBAPP_HOST=127.0.0.1
+WEBAPP_PORT=8080
+```
+
+Новости берутся из `NEWS_RSS_URLS`. Можно указать несколько RSS через запятую. Для Twitter/X без платного API используйте внешний RSS-мост или свой endpoint, например RSSHub/Nitter, если он доступен на вашем сервере.
 
 ## 5. Где менять Roblox Events endpoint
 

@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
+
+from config import settings
 
 
 def main_menu() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
+    rows = []
+    if settings.webapp_url:
+        rows.append([KeyboardButton(text="Открыть меню", web_app=WebAppInfo(url=settings.webapp_url))])
+    rows.extend(
+        [
             [KeyboardButton(text="➕ Добавить игру"), KeyboardButton(text="📋 Мои подписки")],
             [KeyboardButton(text="🔥 Ближайшие события"), KeyboardButton(text="⚙️ Настройки")],
-        ],
+        ]
+    )
+    return ReplyKeyboardMarkup(
+        keyboard=rows,
         resize_keyboard=True,
         input_field_placeholder="Выберите действие",
     )
