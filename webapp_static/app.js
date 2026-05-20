@@ -314,7 +314,6 @@ function chatCard(chat) {
       <span>
         <strong>${escapeHtml(chat.title || chat.username)}</strong>
         <small>${formatMembers(chat.members)}</small>
-        <em>${escapeHtml(compactText(chat.description || "Telegram-чат сообщества", 58))}</em>
       </span>
       <button class="mini-primary" type="button" data-action="open-chat" data-url="${escapeAttr(chat.url)}">Открыть</button>
     </article>

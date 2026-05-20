@@ -386,12 +386,6 @@ input {
   font-size: 13px;
 }
 
-.chat-row em {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .game-row img {
   width: 48px;
