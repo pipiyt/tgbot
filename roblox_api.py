@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Change Roblox URLs here if Roblox changes an endpoint.
 PLACE_DETAILS_URL = "https://games.roblox.com/v1/games/multiget-place-details"
+PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
 UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
 
@@ -72,6 +73,9 @@ class RobloxApi:
             by_place = await self._get_place_details(place_id)
             if by_place:
                 return by_place
+            by_universe_lookup = await self._get_game_from_place_universe(place_id)
+            if by_universe_lookup:
+                return by_universe_lookup
 
         if value.isdigit():
             universe_id = int(value)
@@ -105,6 +109,25 @@ class RobloxApi:
         if not universe_id:
             return None
         return RobloxGame(place_id=place_id, universe_id=int(universe_id), name=str(name))
+
+    async def _get_game_from_place_universe(self, place_id: int) -> RobloxGame | None:
+        data = await self._request_json(PLACE_UNIVERSE_URL.format(place_id=place_id))
+        if not isinstance(data, dict):
+            return None
+
+        universe_id = data.get("universeId") or data.get("universe_id")
+        if not universe_id:
+            return None
+
+        info = await self.get_game_info(int(universe_id))
+        if not info:
+            return RobloxGame(place_id=place_id, universe_id=int(universe_id), name="Roblox Game")
+
+        return RobloxGame(
+            place_id=int(info.get("place_id") or place_id),
+            universe_id=int(universe_id),
+            name=str(info.get("name") or "Roblox Game"),
+        )
 
     async def get_game_info(self, universe_id: int) -> dict | None:
         data = await self._request_json(UNIVERSE_DETAILS_URL, params={"universeIds": str(universe_id)})

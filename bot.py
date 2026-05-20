@@ -54,6 +54,22 @@ async def add_game_value(message: Message, state: FSMContext) -> None:
         await message.answer("Нужна ссылка, placeId или universeId текстом.")
         return
 
+    if message.text == "📋 Мои подписки":
+        await state.clear()
+        await subscriptions(message)
+        return
+    if message.text == "🔥 Ближайшие события":
+        await state.clear()
+        await events(message)
+        return
+    if message.text == "⚙️ Настройки":
+        await state.clear()
+        await settings_button(message)
+        return
+    if message.text == "➕ Добавить игру":
+        await message.answer("Отправьте ссылку Roblox игры, placeId или universeId.")
+        return
+
     game = await resolve_game(message.text)
     if not game:
         await message.answer(
