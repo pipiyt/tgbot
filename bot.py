@@ -18,6 +18,7 @@ from roblox_api import (
     PLACE_UNIVERSE_URL,
     close_api,
     get_api,
+    get_game_events,
     resolve_game,
     search_games,
 )
@@ -174,6 +175,35 @@ async def subscriptions(message: Message) -> None:
             f"▶️ https://www.roblox.com/games/{item['place_id']}"
         )
     await message.answer("\n".join(lines), reply_markup=subscriptions_keyboard(items))
+    await send_subscription_events(message, items)
+
+
+async def send_subscription_events(message: Message, subscriptions_items: list[dict]) -> None:
+    await message.answer("Проверяю события по вашим подпискам...")
+    for item in subscriptions_items:
+        events_list = await get_game_events(int(item["universe_id"]))
+        if not events_list:
+            await message.answer(
+                f"🎮 {item['game_name']}\n"
+                "События: Roblox events endpoint сейчас не вернул данные."
+            )
+            continue
+
+        for event in events_list[:3]:
+            await db.upsert_event(event)
+            text = (
+                f"🔔 Roblox Event\n"
+                f"🎮 Игра: {item['game_name']}\n"
+                f"🎁 Событие: {event['title']}\n"
+                f"📝 Описание: {event.get('description') or 'нет описания'}\n"
+                f"🕒 Старт: {format_time(event.get('start_time'))}\n"
+                f"▶️ Играть: https://www.roblox.com/games/{item['place_id']}"
+            )
+            image_url = event.get("image_url")
+            if image_url:
+                await message.answer_photo(image_url, caption=text)
+            else:
+                await message.answer(text)
 
 
 @router.message(Command("remove"))
@@ -252,6 +282,8 @@ async def debug_roblox(message: Message) -> None:
     lines = ["Roblox debug:"]
     for title, url, params in checks:
         lines.append(await api.debug_request(title, url, params))
+    test_events = await get_game_events(383310974)
+    lines.append(f"events test: {len(test_events)} events")
     await message.answer("\n".join(lines))
 
 

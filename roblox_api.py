@@ -409,13 +409,18 @@ class RobloxApi:
         if isinstance(data, list):
             return [item for item in data if isinstance(item, dict)]
         if isinstance(data, dict):
-            for key in ("data", "events", "experienceEvents"):
+            for key in ("data", "events", "experienceEvents", "items", "results"):
                 value = data.get(key)
                 if isinstance(value, list):
                     return [item for item in value if isinstance(item, dict)]
         return []
 
     def _normalize_event(self, universe_id: int, item: dict) -> dict | None:
+        for nested_key in ("event", "experienceEvent", "metadata", "details"):
+            nested = item.get(nested_key)
+            if isinstance(nested, dict):
+                item = {**item, **nested}
+
         event_id = item.get("id") or item.get("eventId") or item.get("event_id")
         title = item.get("title") or item.get("name") or item.get("eventTitle")
         if not event_id or not title:
@@ -426,19 +431,35 @@ class RobloxApi:
             or item.get("startsAt")
             or item.get("start_time")
             or item.get("eventStartTime")
+            or item.get("starts")
         )
-        end_time = item.get("endTime") or item.get("endsAt") or item.get("end_time")
-        image_url = item.get("imageUrl") or item.get("thumbnailUrl") or item.get("iconUrl")
+        end_time = item.get("endTime") or item.get("endsAt") or item.get("end_time") or item.get("ends")
+        image_url = self._extract_event_image_url(item)
 
         return {
             "event_id": str(event_id),
             "universe_id": universe_id,
             "title": str(title),
-            "description": item.get("description") or "",
+            "description": item.get("description") or item.get("subtitle") or item.get("caption") or "",
             "start_time": self._normalize_time(start_time),
             "end_time": self._normalize_time(end_time),
             "image_url": image_url,
         }
+
+    def _extract_event_image_url(self, item: dict) -> str | None:
+        direct = item.get("imageUrl") or item.get("thumbnailUrl") or item.get("iconUrl") or item.get("mediaUrl")
+        if isinstance(direct, str):
+            return direct
+
+        for key in ("image", "thumbnail", "icon", "media"):
+            value = item.get(key)
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict):
+                nested = value.get("url") or value.get("imageUrl") or value.get("thumbnailUrl")
+                if isinstance(nested, str):
+                    return nested
+        return None
 
     def _normalize_time(self, value: Any) -> str | None:
         if not value:
