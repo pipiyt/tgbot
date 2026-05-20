@@ -408,7 +408,10 @@ async def fetch_rss(session: aiohttp.ClientSession, url: str, category: str) -> 
     except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
         logger.warning("News RSS failed: %s - %r", url, exc)
         return []
-    return parse_rss(text, url, category)
+    items = parse_rss(text, url, category)
+    if not items:
+        logger.warning("News RSS parsed no items: %s - %s", url, text[:160].replace("\n", " "))
+    return items
 
 
 def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
@@ -426,7 +429,7 @@ def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
         published_ts = parse_news_time(published)
         image = find_rss_image(item)
         if title:
-            source_id = hashlib.sha256(f"{source_url}|{link or title}|{published}".encode()).hexdigest()
+            source_id = hashlib.sha256(f"{category}|{link or title}|{published}".encode()).hexdigest()
             items.append(
                 {
                     "source_id": source_id,
@@ -461,7 +464,7 @@ def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
         published_ts = parse_news_time(published)
         image = find_rss_image(entry)
         if title:
-            source_id = hashlib.sha256(f"{source_url}|{link or title}|{published}".encode()).hexdigest()
+            source_id = hashlib.sha256(f"{category}|{link or title}|{published}".encode()).hexdigest()
             items.append(
                 {
                     "source_id": source_id,

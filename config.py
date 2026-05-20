@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+DEFAULT_ROBLOX_NEWS_RSS_URLS = (
+    "https://rsshub.app/twitter/user/Roblox_RTC,"
+    "https://rss.detools.dev/twitter/user/Roblox_RTC,"
+    "https://rsshub.isrss.com/twitter/user/Roblox_RTC,"
+    "https://rsshub-boost.23751.net/twitter/user/Roblox_RTC"
+)
+
+
 def _get_int(name: str, default: int) -> int:
     raw = os.getenv(name)
     if not raw:
@@ -46,7 +54,7 @@ settings = Settings(
     webapp_port=_get_int("WEBAPP_PORT", 8080),
     news_roblox_rss_urls=tuple(
         url.strip()
-        for url in (os.getenv("NEWS_ROBLOX_RSS_URLS") or "https://rsshub.app/twitter/user/Roblox_RTC").split(",")
+        for url in (os.getenv("NEWS_ROBLOX_RSS_URLS") or DEFAULT_ROBLOX_NEWS_RSS_URLS).split(",")
         if url.strip()
     ),
     news_developer_rss_urls=tuple(
