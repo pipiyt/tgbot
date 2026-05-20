@@ -7,6 +7,7 @@ import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -112,12 +113,61 @@ class RobloxApi:
                 raw = response.read().decode(charset, errors="replace")
                 if not raw:
                     return None
-                import json
-
                 return json.loads(raw)
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
             logger.warning("Roblox urllib fallback failed: %s - %s: %r", url, type(exc).__name__, exc)
             return None
+
+    async def debug_request(self, title: str, url: str, params: dict | None = None) -> str:
+        try:
+            async with self.session.get(url, params=params) as response:
+                body = await response.text()
+                if response.status >= 400:
+                    return f"{title}: HTTP {response.status} {body[:120]}"
+                try:
+                    data = json.loads(body)
+                except ValueError:
+                    return f"{title}: non-json {response.status} {body[:120]}"
+                return self._format_debug_result(title, data)
+        except Exception as exc:
+            fallback = await asyncio.to_thread(self._debug_request_urllib, title, url, params)
+            if fallback:
+                return fallback
+            return f"{title}: {type(exc).__name__} {exc!r}"
+
+    def _debug_request_urllib(self, title: str, url: str, params: dict | None = None) -> str | None:
+        if params:
+            query = urllib.parse.urlencode(params)
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}{query}"
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": "RobloxNotificationBot/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=settings.http_timeout_seconds) as response:
+                raw = response.read().decode("utf-8", errors="replace")
+                try:
+                    data = json.loads(raw)
+                except ValueError:
+                    return f"{title}: urllib non-json {response.status} {raw[:120]}"
+                return f"{self._format_debug_result(title, data)} via urllib"
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            return f"{title}: urllib HTTP {exc.code} {body[:120]}"
+        except Exception as exc:
+            return f"{title}: urllib {type(exc).__name__} {exc!r}"
+
+    def _format_debug_result(self, title: str, data: Any) -> str:
+        if isinstance(data, list):
+            return f"{title}: OK list[{len(data)}]"
+        if isinstance(data, dict):
+            return f"{title}: OK dict keys={', '.join(list(data.keys())[:5])}"
+        return f"{title}: OK {type(data).__name__}"
 
     async def resolve_game(self, input_text: str) -> RobloxGame | None:
         value = input_text.strip()

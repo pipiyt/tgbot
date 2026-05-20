@@ -255,15 +255,7 @@ async def debug_roblox(message: Message) -> None:
     ]
     lines = ["Roblox debug:"]
     for title, url, params in checks:
-        data = await api._request_json(url, retries=1, params=params)
-        if data is None:
-            lines.append(f"{title}: FAIL")
-        elif isinstance(data, list):
-            lines.append(f"{title}: OK list[{len(data)}]")
-        elif isinstance(data, dict):
-            lines.append(f"{title}: OK dict keys={', '.join(list(data.keys())[:5])}")
-        else:
-            lines.append(f"{title}: OK {type(data).__name__}")
+        lines.append(await api.debug_request(title, url, params))
     await message.answer("\n".join(lines))
 
 
