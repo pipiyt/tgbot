@@ -505,11 +505,29 @@ button:disabled {
   grid-template-columns: 62px 1fr;
   gap: 10px;
   align-items: start;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
 }
 
-.event-row img {
+.event-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.event-row img,
+.event-placeholder {
   width: 62px;
   height: 62px;
+}
+
+.event-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+  background: rgba(122, 76, 245, 0.13);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .event-row strong {
@@ -525,6 +543,12 @@ button:disabled {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.event-row em {
+  margin-top: 5px;
+  color: var(--accent-2);
 }
 
 @keyframes countdownPulse {

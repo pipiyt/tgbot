@@ -73,7 +73,7 @@ document.addEventListener("click", (event) => {
   if (button.dataset.action === "subscribe") {
     subscribe(Number(button.dataset.universeId), Number(button.dataset.placeId), button.dataset.name || "Roblox Game", button);
   }
-  if (button.dataset.action === "remove") removeSub(Number(button.dataset.id));
+  if (button.dataset.action === "remove") removeSub(Number(button.dataset.id), button);
   if (button.dataset.action === "details") showDetails(Number(button.dataset.id));
 });
 
@@ -212,15 +212,20 @@ async function subscribe(universeId, placeId, name, button) {
   }
 }
 
-async function removeSub(id) {
+async function removeSub(id, button) {
+  if (button) button.disabled = true;
   try {
     await api(`/api/subscriptions/${id}`, { method: "DELETE" });
     state.subscriptions = state.subscriptions.filter((item) => Number(item.id) !== id);
     showToast("Подписка удалена");
-    setView("games");
-    renderSubscriptions();
+    if (state.view === "gameDetails") {
+      setView("games");
+    } else {
+      renderSubscriptions();
+    }
   } catch (error) {
     showToast(`Не удалось удалить: ${error.message}`);
+    if (button) button.disabled = false;
   }
 }
 
@@ -262,7 +267,7 @@ function subscriptionCard(item) {
         <small>Обновления</small>
         <em>ID: ${Number(item.universe_id)}</em>
       </span>
-      <button class="switch on" type="button" data-action="details" data-id="${Number(item.id)}" aria-label="Открыть"></button>
+      <button class="switch on" type="button" data-action="remove" data-id="${Number(item.id)}" aria-label="Отписаться"></button>
     </article>
   `;
 }
@@ -297,8 +302,8 @@ function detailsSkeleton(sub) {
 }
 
 function detailsView(sub, events, message = "") {
-  const latest = events[0];
   const countdownEvent = getCountdownEvent(events);
+  const visibleEvents = sortEvents(events).slice(0, 4);
   return `
     <section class="details-hero">
       <img src="${thumbnailUrl(sub.universe_id)}" alt="">
@@ -321,22 +326,55 @@ function detailsView(sub, events, message = "") {
 
     <section class="info-panel">
       <h2>Последнее событие</h2>
-      ${
-        latest
-          ? `<article class="event-row">
-              ${latest.image_url ? `<img src="${escapeAttr(latest.image_url)}" alt="">` : ""}
-              <span>
-                <strong>${escapeHtml(latest.title)}</strong>
-                <small>${escapeHtml(compactText(latest.description_ru || latest.description || "Новое событие", 160))}</small>
-                <em>${escapeHtml(latest.time_label || "")}</em>
-              </span>
-            </article>`
-          : `<p class="muted">${escapeHtml(message || "Активных событий пока нет")}</p>`
-      }
+      ${visibleEvents.length ? visibleEvents.map(eventCard).join("") : `<p class="muted">${escapeHtml(message || "Активных событий пока нет")}</p>`}
     </section>
 
     <button class="danger-wide" type="button" data-action="remove" data-id="${Number(sub.id)}">Отписаться</button>
   `;
+}
+
+function eventCard(event) {
+  const status = eventStatus(event);
+  return `
+    <article class="event-row">
+      ${event.image_url ? `<img src="${escapeAttr(event.image_url)}" alt="">` : `<span class="event-placeholder">EV</span>`}
+      <span>
+        <strong>${escapeHtml(event.title || "Событие")}</strong>
+        <small>${escapeHtml(eventDescription(event))}</small>
+        <em>${escapeHtml(status)}</em>
+      </span>
+    </article>
+  `;
+}
+
+function eventDescription(event) {
+  const raw = event.description_ru || event.description || "";
+  const cleaned = String(raw)
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, " ")
+    .replace(/[•·]+/g, " ")
+    .replace(/\s*-\s*/g, ". ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "Подробности события скоро появятся.";
+  return compactText(cleaned, 120);
+}
+
+function sortEvents(events) {
+  return [...events].sort((a, b) => {
+    const aStart = parseEventTime(a.start_time) || Number.MAX_SAFE_INTEGER;
+    const bStart = parseEventTime(b.start_time) || Number.MAX_SAFE_INTEGER;
+    return aStart - bStart;
+  });
+}
+
+function eventStatus(event) {
+  const startMs = parseEventTime(event.start_time);
+  const endMs = parseEventTime(event.end_time);
+  const now = Date.now();
+  if (startMs && startMs <= now && (!endMs || endMs > now)) return "Уже идёт";
+  if (startMs && startMs > now) return `Начнётся через ${formatCountdown(startMs - now)}`;
+  if (endMs && endMs <= now) return "Завершено";
+  return event.time_label || "";
 }
 
 function countdownPanel(event) {
