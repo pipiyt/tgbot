@@ -21,7 +21,10 @@ const api = async (path, options = {}) => {
       ...(options.headers || {}),
     },
   });
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
   return response.json();
 };
 
@@ -103,13 +106,13 @@ async function subscribe(universeId, placeId, name, button) {
   try {
     await api("/api/subscriptions", {
       method: "POST",
-      body: JSON.stringify({ universe_id: universeId, place_id: placeId, name }),
+      body: JSON.stringify({ universe_id: universeId, place_id: placeId, name, init_data: initData }),
     });
     tg?.HapticFeedback?.notificationOccurred("success");
     setView("alerts");
   } catch (error) {
     tg?.HapticFeedback?.notificationOccurred("error");
-    showToast("Не удалось подписаться. Откройте WebApp из Telegram.");
+    showToast(`Не удалось подписаться: ${error.message}`);
     if (button) {
       button.disabled = false;
       button.textContent = "Подписаться";

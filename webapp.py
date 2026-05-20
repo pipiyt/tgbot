@@ -129,8 +129,8 @@ class WebAppServer:
         )
 
     async def add_subscription(self, request: web.Request) -> web.Response:
-        user_id = require_user_id(request)
         payload = await request.json()
+        user_id = require_user_id(request, str(payload.get("init_data") or ""))
         universe_id = int(payload["universe_id"])
         place_id = int(payload["place_id"])
         game_name = str(payload.get("name") or "Roblox Game")
@@ -144,8 +144,8 @@ class WebAppServer:
         return web.json_response({"ok": True, "removed": removed})
 
 
-def require_user_id(request: web.Request) -> int:
-    init_data = request.headers.get("X-Telegram-Init-Data", "")
+def require_user_id(request: web.Request, fallback_init_data: str = "") -> int:
+    init_data = request.headers.get("X-Telegram-Init-Data", "") or fallback_init_data
     if init_data:
         user = validate_init_data(init_data)
         if user and user.get("id"):
