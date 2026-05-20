@@ -49,10 +49,17 @@ class AddGame(StatesGroup):
 @router.channel_post()
 async def save_channel_news(message: Message) -> None:
     if not is_news_channel(message):
+        logger.info(
+            "Ignored channel post: chat_id=%s username=%s allowed=%s",
+            message.chat.id,
+            message.chat.username,
+            settings.news_telegram_channels,
+        )
         return
 
     text = (message.text or message.caption or "").strip()
     if not text:
+        logger.info("Ignored channel post without text: chat_id=%s message_id=%s", message.chat.id, message.message_id)
         return
 
     link = channel_post_link(message)
@@ -387,6 +394,21 @@ async def debug_roblox(message: Message) -> None:
     lines = ["Roblox debug:"]
     for title, url, params in checks:
         lines.append(await api.debug_request(title, url, params))
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("news_debug"))
+async def news_debug(message: Message) -> None:
+    if settings.admin_id and message.from_user and message.from_user.id != settings.admin_id:
+        return
+    rows = await db.get_news_items("roblox", 5)
+    lines = [
+        "News debug:",
+        f"NEWS_TELEGRAM_CHANNELS={', '.join(settings.news_telegram_channels) or '(all channels)'}",
+        f"Saved Roblox news: {len(rows)} shown / latest 5",
+    ]
+    for row in rows:
+        lines.append(f"- {row.get('title_ru') or row.get('title')} | {row.get('source')}")
     await message.answer("\n".join(lines))
 
 
