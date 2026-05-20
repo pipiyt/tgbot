@@ -209,7 +209,11 @@ async def send_subscription_events(message: Message, item: dict) -> None:
         )
         image_url = event.get("image_url")
         if image_url:
-            await message.answer_photo(image_url, caption=telegram_caption(text))
+            try:
+                await message.answer_photo(image_url, caption=telegram_caption(text))
+            except Exception:
+                logger.warning("Could not send event image: %s", image_url)
+                await message.answer(text)
         else:
             await message.answer(text)
 
