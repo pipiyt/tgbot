@@ -36,8 +36,6 @@ HTTP_RETRIES=1
 WEBAPP_URL=https://your-domain.example
 WEBAPP_HOST=0.0.0.0
 WEBAPP_PORT=8080
-NEWS_ROBLOX_RSS_URLS=https://twiiit.com/Roblox_RTC/rss,https://rsshub.app/twitter/user/Roblox_RTC,https://rss.detools.dev/twitter/user/Roblox_RTC,https://rsshub.isrss.com/twitter/user/Roblox_RTC,https://rsshub-boost.23751.net/twitter/user/Roblox_RTC
-NEWS_DEVELOPER_RSS_URLS=https://blog.roblox.com/feed/
 NEWS_TELEGRAM_CHANNELS=
 ```
 
@@ -84,9 +82,7 @@ WEBAPP_HOST=127.0.0.1
 WEBAPP_PORT=8080
 ```
 
-Новости кешируются в SQLite. Вкладка `Все` объединяет `NEWS_ROBLOX_RSS_URLS` и `NEWS_DEVELOPER_RSS_URLS`, вкладка `Roblox` берет `NEWS_ROBLOX_RSS_URLS`, вкладка `Разработчики` берет `NEWS_DEVELOPER_RSS_URLS`. Для Twitter/X без платного API используйте внешний RSS-мост или свой endpoint, например RSSHub/Nitter/RSSHub, если он доступен на вашем сервере.
-
-Для стабильных Roblox-новостей можно добавить бота администратором в свой Telegram-канал и указать username канала в `NEWS_TELEGRAM_CHANNELS`, например `NEWS_TELEGRAM_CHANNELS=my_roblox_news`. Каждый пост канала будет сохраняться как новость во вкладку `Roblox`; в WebApp показывается короткое описание и ссылка на полный пост.
+Новости берутся только из Telegram-канала. Добавьте бота администратором в канал и укажите username канала в `NEWS_TELEGRAM_CHANNELS`, например `NEWS_TELEGRAM_CHANNELS=my_roblox_news`. Каждый новый пост канала сохраняется в SQLite и показывается во вкладке `Новости`; в WebApp отображается короткое описание и ссылка на полный пост.
 
 ### Быстрая установка WebApp на VPS
 

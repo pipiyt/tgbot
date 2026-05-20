@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import hmac
-import html
 import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
-from xml.etree import ElementTree
 
 import aiohttp
 from aiohttp import web
@@ -26,15 +23,14 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "webapp_static"
 POPULAR_CACHE_TTL_SECONDS = 300
 CHATS_CACHE_TTL_SECONDS = 600
-NEWS_CACHE_TTL_SECONDS = 900
 CHAT_LINKS = ("tradekronos", "stealabrain_chat")
 _popular_cache: list[dict] = []
 _popular_cache_ts = 0.0
 _chats_cache: list[dict] = []
 _chats_cache_ts = 0.0
 _telegram_file_cache: dict[str, str] = {}
-_news_refresh_lock = asyncio.Lock()
-_news_cache_ts = 0.0
+_telegram_post_exists_cache: dict[str, tuple[bool, float]] = {}
+TELEGRAM_POST_EXISTS_TTL_SECONDS = 180
 
 
 class WebAppServer:
@@ -76,9 +72,8 @@ class WebAppServer:
         return response
 
     async def news(self, request: web.Request) -> web.Response:
-        category = request.query.get("category", "").strip() or None
-        force = request.query.get("refresh") == "1"
-        items = await load_news_cached(self.db, category, force)
+        rows = await filter_existing_news(self.db, await self.db.get_news_items("roblox", 30))
+        items = normalize_cached_news(rows)
         return web.json_response({"items": items[:20]})
 
     async def subscriptions(self, request: web.Request) -> web.Response:
@@ -348,22 +343,48 @@ def fallback_chat(username: str) -> dict:
     }
 
 
-async def load_news_cached(db: Database, category: str | None = None, force: bool = False) -> list[dict]:
-    global _news_cache_ts
+async def filter_existing_news(db: Database, rows: list[dict]) -> list[dict]:
+    checks = await asyncio.gather(*(telegram_post_exists(row.get("link") or "") for row in rows), return_exceptions=True)
+    visible: list[dict] = []
+    for row, exists in zip(rows, checks):
+        if exists is False:
+            await db.delete_news_item(row["source_id"])
+            logger.info("Deleted missing Telegram channel news: %s", row.get("link"))
+            continue
+        visible.append(row)
+    return visible
+
+
+async def telegram_post_exists(link: str) -> bool:
+    if not link.startswith("https://t.me/"):
+        return True
     now = time.monotonic()
-    cached = await db.get_news_items(category, 30)
-    if cached and not force and now - _news_cache_ts < NEWS_CACHE_TTL_SECONDS:
-        return normalize_cached_news(cached)
+    cached = _telegram_post_exists_cache.get(link)
+    if cached and now - cached[1] < TELEGRAM_POST_EXISTS_TTL_SECONDS:
+        return cached[0]
 
-    async with _news_refresh_lock:
-        now = time.monotonic()
-        if force or not cached or now - _news_cache_ts >= NEWS_CACHE_TTL_SECONDS:
-            fresh_items = await fetch_news_sources()
-            for item in fresh_items:
-                await db.upsert_news_item(item)
-            _news_cache_ts = time.monotonic()
+    timeout = aiohttp.ClientTimeout(total=3)
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; RobloxNotificationBot/1.0)"},
+    ) as session:
+        try:
+            async with session.get(link) as response:
+                if response.status == 404:
+                    _telegram_post_exists_cache[link] = (False, now)
+                    return False
+                if response.status >= 400:
+                    return True
+                text = await response.text()
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            return True
 
-    return normalize_cached_news(await db.get_news_items(category, 30))
+    exists = "tgme_widget_message" in text or "tgme_widget_message_text" in text
+    if not exists and ("Post not found" in text or "tgme_page_title" in text):
+        _telegram_post_exists_cache[link] = (False, now)
+        return False
+    _telegram_post_exists_cache[link] = (True, now)
+    return True
 
 
 def normalize_cached_news(rows: list[dict]) -> list[dict]:
@@ -379,203 +400,6 @@ def normalize_cached_news(rows: list[dict]) -> list[dict]:
         }
         for row in rows
     ]
-
-
-async def fetch_news_sources() -> list[dict]:
-    timeout = aiohttp.ClientTimeout(total=4)
-    async with aiohttp.ClientSession(
-        timeout=timeout,
-        headers={
-            "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
-            "User-Agent": "Mozilla/5.0 (compatible; RobloxNotificationBot/1.0; +https://rbxnotify.ru)",
-        },
-    ) as session:
-        tasks = [
-            *(fetch_rss(session, url, "roblox") for url in settings.news_roblox_rss_urls),
-            *(fetch_rss(session, url, "dev") for url in settings.news_developer_rss_urls),
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    items: list[dict] = []
-    for result in results:
-        if isinstance(result, list):
-            items.extend(result)
-    await translate_news_items(items)
-    items.sort(key=lambda item: item.get("published_ts", 0), reverse=True)
-    return items
-
-
-async def fetch_rss(session: aiohttp.ClientSession, url: str, category: str) -> list[dict]:
-    try:
-        async with session.get(url) as response:
-            if response.status >= 400:
-                logger.warning("News RSS returned HTTP %s: %s", response.status, url)
-                return []
-            text = await response.text()
-    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-        logger.warning("News RSS failed: %s - %r", url, exc)
-        return []
-    items = parse_rss(text, url, category)
-    if not items:
-        logger.warning(
-            "News RSS parsed no items: %s - item=%s ns_item=%s entry=%s - %s",
-            url,
-            text.count("<item"),
-            text.count(":item"),
-            text.count("<entry"),
-            text[:160].replace("\n", " "),
-        )
-    return items
-
-
-def parse_rss(text: str, source_url: str, category: str) -> list[dict]:
-    try:
-        root = ElementTree.fromstring(text)
-    except ElementTree.ParseError:
-        return []
-
-    items = []
-    rss_items = root.findall(".//item") or root.findall(".//{*}item")
-    for item in rss_items[:20]:
-        title = get_child_text(item, "title") or get_child_text_ns(item, "title")
-        link = get_child_text(item, "link") or get_child_text_ns(item, "link")
-        description_raw = (
-            get_child_text(item, "description")
-            or get_child_text_ns(item, "description")
-            or get_child_text_ns(item, "encoded")
-        )
-        description = strip_html(description_raw)
-        published = get_child_text(item, "pubDate") or get_child_text_ns(item, "pubDate")
-        published_ts = parse_news_time(published)
-        image = find_rss_image(item) or find_html_image(description_raw)
-        if title:
-            source_id = hashlib.sha256(f"{category}|{link or title}|{published}".encode()).hexdigest()
-            items.append(
-                {
-                    "source_id": source_id,
-                    "category": category,
-                    "title": title,
-                    "description": description,
-                    "link": link,
-                    "published": published,
-                    "published_ts": published_ts,
-                    "image": image,
-                    "source": source_url,
-                }
-            )
-    if items:
-        return items
-
-    for entry in root.findall(".//{*}entry")[:20]:
-        title = get_child_text(entry, "title") or get_child_text_ns(entry, "title")
-        link = find_atom_link(entry)
-        description_raw = (
-            get_child_text(entry, "summary")
-            or get_child_text(entry, "content")
-            or get_child_text_ns(entry, "summary")
-            or get_child_text_ns(entry, "content")
-        )
-        description = strip_html(description_raw)
-        published = (
-            get_child_text(entry, "published")
-            or get_child_text(entry, "updated")
-            or get_child_text_ns(entry, "published")
-            or get_child_text_ns(entry, "updated")
-        )
-        published_ts = parse_news_time(published)
-        image = find_rss_image(entry) or find_html_image(description_raw)
-        if title:
-            source_id = hashlib.sha256(f"{category}|{link or title}|{published}".encode()).hexdigest()
-            items.append(
-                {
-                    "source_id": source_id,
-                    "category": category,
-                    "title": title,
-                    "description": description,
-                    "link": link,
-                    "published": published,
-                    "published_ts": published_ts,
-                    "image": image,
-                    "source": source_url,
-                }
-            )
-    return items
-
-
-async def translate_news_items(items: list[dict]) -> None:
-    for item in items:
-        item["title_ru"] = await translate_to_ru(item.get("title") or "")
-        item["description_ru"] = await translate_to_ru(item.get("description") or "")
-
-
-def get_child_text(item: ElementTree.Element, tag: str) -> str:
-    child = item.find(tag)
-    return child.text.strip() if child is not None and child.text else ""
-
-
-def get_child_text_ns(item: ElementTree.Element, tag: str) -> str:
-    child = item.find(f"{{*}}{tag}")
-    return child.text.strip() if child is not None and child.text else ""
-
-
-def find_atom_link(entry: ElementTree.Element) -> str:
-    for child in entry.findall("{*}link"):
-        href = child.attrib.get("href")
-        rel = child.attrib.get("rel", "alternate")
-        if href and rel == "alternate":
-            return href
-    link = entry.find("{*}link")
-    if link is not None:
-        return link.attrib.get("href", "")
-    return get_child_text(entry, "link") or get_child_text_ns(entry, "link")
-
-
-def find_rss_image(item: ElementTree.Element) -> str:
-    for child in item.iter():
-        url = child.attrib.get("url") or child.attrib.get("href")
-        if url and any(part in child.tag.lower() for part in ("thumbnail", "content", "enclosure")):
-            return url
-    return ""
-
-
-def strip_html(value: str) -> str:
-    import re
-
-    return html.unescape(re.sub(r"<[^>]+>", "", value or "")).strip()
-
-
-def find_html_image(value: str) -> str:
-    import re
-
-    match = re.search(r"<img[^>]+src=[\"']([^\"']+)[\"']", value or "", re.IGNORECASE)
-    if not match:
-        return ""
-    url = html.unescape(match.group(1))
-    if url.startswith("//"):
-        return f"https:{url}"
-    return url if url.startswith("http") else ""
-
-
-def parse_news_time(value: str) -> float:
-    if not value:
-        return 0
-    from email.utils import parsedate_to_datetime
-
-    try:
-        parsed = parsedate_to_datetime(value)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.timestamp()
-    except (TypeError, ValueError):
-        pass
-
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.timestamp()
-    except ValueError:
-        return 0
 
 
 def is_event_finished(event: dict) -> bool:

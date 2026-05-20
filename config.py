@@ -9,15 +9,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-DEFAULT_ROBLOX_NEWS_RSS_URLS = (
-    "https://twiiit.com/Roblox_RTC/rss,"
-    "https://rsshub.app/twitter/user/Roblox_RTC,"
-    "https://rss.detools.dev/twitter/user/Roblox_RTC,"
-    "https://rsshub.isrss.com/twitter/user/Roblox_RTC,"
-    "https://rsshub-boost.23751.net/twitter/user/Roblox_RTC"
-)
-
-
 def _get_int(name: str, default: int) -> int:
     raw = os.getenv(name)
     if not raw:
@@ -39,8 +30,6 @@ class Settings:
     webapp_url: str
     webapp_host: str
     webapp_port: int
-    news_roblox_rss_urls: tuple[str, ...]
-    news_developer_rss_urls: tuple[str, ...]
     news_telegram_channels: tuple[str, ...]
 
 
@@ -54,16 +43,6 @@ settings = Settings(
     webapp_url=os.getenv("WEBAPP_URL", "").rstrip("/"),
     webapp_host=os.getenv("WEBAPP_HOST", "0.0.0.0"),
     webapp_port=_get_int("WEBAPP_PORT", 8080),
-    news_roblox_rss_urls=tuple(
-        url.strip()
-        for url in (os.getenv("NEWS_ROBLOX_RSS_URLS") or DEFAULT_ROBLOX_NEWS_RSS_URLS).split(",")
-        if url.strip()
-    ),
-    news_developer_rss_urls=tuple(
-        url.strip()
-        for url in os.getenv("NEWS_DEVELOPER_RSS_URLS", os.getenv("NEWS_RSS_URLS", "https://blog.roblox.com/feed/")).split(",")
-        if url.strip()
-    ),
     news_telegram_channels=tuple(
         channel.strip().lstrip("@").lower()
         for channel in os.getenv("NEWS_TELEGRAM_CHANNELS", "").split(",")

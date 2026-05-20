@@ -412,6 +412,27 @@ async def news_debug(message: Message) -> None:
     await message.answer("\n".join(lines))
 
 
+@router.message(Command("news_delete"))
+async def news_delete(message: Message) -> None:
+    if settings.admin_id and message.from_user and message.from_user.id != settings.admin_id:
+        return
+    if not message.text:
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Использование: /news_delete <id поста канала или ссылка>")
+        return
+    value = parts[1].strip()
+    rows = await db.get_news_items("roblox", 100)
+    removed = 0
+    for row in rows:
+        link = row.get("link") or ""
+        if link.endswith(f"/{value}") or link == value:
+            await db.delete_news_item(row["source_id"])
+            removed += 1
+    await message.answer(f"Удалено новостей: {removed}")
+
+
 @router.message(F.text == "⚙️ Настройки")
 async def settings_button(message: Message) -> None:
     await message.answer(

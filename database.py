@@ -254,3 +254,7 @@ class Database:
             )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def delete_news_item(self, source_id: str) -> None:
+        await self._db().execute("DELETE FROM news_items WHERE source_id = ?", (source_id,))
+        await self._db().commit()

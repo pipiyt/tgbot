@@ -10,8 +10,6 @@ const authSig = params.get("auth_sig");
 const state = {
   view: "home",
   previousView: "home",
-  newsFilter: "all",
-  newsCategory: "",
   gamesMode: "subs",
   news: [],
   chats: [],
@@ -68,14 +66,6 @@ document.querySelector("#gameSearch").addEventListener("keydown", (event) => {
 document.querySelector("#chatSearchBtn").addEventListener("click", () => renderChats());
 document.querySelector("#chatSearch").addEventListener("input", () => renderChats());
 
-document.querySelector("#newsFilters").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-filter]");
-  if (!button) return;
-  state.newsFilter = button.dataset.filter;
-  document.querySelectorAll("#newsFilters button").forEach((item) => item.classList.toggle("active", item === button));
-  loadNews();
-});
-
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
@@ -116,18 +106,14 @@ async function loadCurrent(force = false) {
 
 async function loadNews(force = false) {
   const list = document.querySelector("#newsList");
-  if (state.news.length && !force && state.newsCategory === state.newsFilter) {
+  if (state.news.length && !force) {
     renderNews();
     return;
   }
   list.innerHTML = skeleton("Загружаю новости...");
   try {
-    const category = state.newsFilter === "all" ? "" : `category=${encodeURIComponent(state.newsFilter)}`;
-    const refresh = force ? `${category ? "&" : ""}refresh=1` : "";
-    const query = category || refresh ? `?${category}${refresh}` : "";
-    const data = await api(`/api/news${query}`);
+    const data = await api("/api/news");
     state.news = data.items || [];
-    state.newsCategory = state.newsFilter;
     renderNews();
   } catch (error) {
     list.innerHTML = empty("Новости пока недоступны");
