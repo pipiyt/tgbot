@@ -23,6 +23,7 @@ from roblox_api import (
     search_games,
 )
 from scheduler import EventScheduler, event_time_label, format_time, parse_roblox_time
+from translator import translate_to_ru
 from datetime import datetime, timezone
 
 
@@ -200,11 +201,12 @@ async def send_subscription_events(message: Message, item: dict) -> None:
 
     for event in active_events[:5]:
         await db.upsert_event(event)
+        description = await translate_to_ru(event.get("description") or "нет описания")
         text = (
             f"🔔 Roblox Event\n"
             f"🎮 Игра: {item['game_name']}\n"
             f"🎁 Событие: {event['title']}\n"
-            f"📝 Описание: {event.get('description') or 'нет описания'}\n"
+            f"📝 Описание: {description or 'нет описания'}\n"
             f"🕒 {event_time_label(event.get('start_time'), event.get('end_time'))}"
         )
         image_url = event.get("image_url")
