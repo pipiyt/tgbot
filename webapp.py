@@ -55,7 +55,10 @@ class WebAppServer:
             await self.runner.cleanup()
 
     async def index(self, request: web.Request) -> web.Response:
-        return web.FileResponse(STATIC_DIR / "index.html")
+        response = web.FileResponse(STATIC_DIR / "index.html")
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        return response
 
     async def news(self, request: web.Request) -> web.Response:
         items = await load_news()
