@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import socket
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -17,9 +18,11 @@ logger = logging.getLogger(__name__)
 # Change Roblox URLs here if Roblox changes an endpoint.
 PLACE_DETAILS_URL = "https://games.roblox.com/v1/games/multiget-place-details"
 PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
+PLACE_WEB_DETAILS_URL = "https://www.roblox.com/places/api-get-details"
 UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
 GAME_SEARCH_URL = "https://games.roblox.com/v1/games/list"
+GAME_SEARCH_WEB_URL = "https://www.roblox.com/games/list-json"
 OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
 
 # Experience Events web endpoints are not guaranteed to be stable/public.
@@ -40,7 +43,15 @@ class RobloxGame:
 class RobloxApi:
     def __init__(self) -> None:
         timeout = aiohttp.ClientTimeout(total=settings.http_timeout_seconds)
-        self.session = aiohttp.ClientSession(timeout=timeout)
+        connector = aiohttp.TCPConnector(family=socket.AF_INET)
+        self.session = aiohttp.ClientSession(
+            timeout=timeout,
+            connector=connector,
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": "RobloxNotificationBot/1.0",
+            },
+        )
 
     async def close(self) -> None:
         await self.session.close()
@@ -68,10 +79,11 @@ class RobloxApi:
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_error = exc
                 logger.warning(
-                    "Roblox request failed (%s/%s): %s - %s",
+                    "Roblox request failed (%s/%s): %s - %s: %r",
                     attempt,
                     max_retries,
                     url,
+                    type(exc).__name__,
                     exc,
                 )
                 await asyncio.sleep(min(attempt, 3))
@@ -89,6 +101,9 @@ class RobloxApi:
             by_universe_lookup = await self._get_game_from_place_universe(place_id)
             if by_universe_lookup:
                 return by_universe_lookup
+            by_web_details = await self._get_place_web_details(place_id)
+            if by_web_details:
+                return by_web_details
 
         if value.isdigit():
             universe_id = int(value)
@@ -111,6 +126,10 @@ class RobloxApi:
             return results[:limit]
 
         results = await self._search_games_legacy(normalized_query, limit)
+        if results:
+            return results[:limit]
+
+        results = await self._search_games_web(normalized_query, limit)
         return results[:limit]
 
     def _normalize_search_query(self, query: str) -> str:
@@ -160,6 +179,21 @@ class RobloxApi:
             universe_id=int(universe_id),
             name=str(info.get("name") or "Roblox Game"),
         )
+
+    async def _get_place_web_details(self, place_id: int) -> RobloxGame | None:
+        data = await self._request_json(
+            PLACE_WEB_DETAILS_URL,
+            retries=1,
+            params={"assetId": str(place_id)},
+        )
+        if not isinstance(data, dict):
+            return None
+
+        universe_id = data.get("UniverseId") or data.get("universeId")
+        name = data.get("Name") or data.get("name") or "Roblox Game"
+        if not universe_id:
+            return None
+        return RobloxGame(place_id=place_id, universe_id=int(universe_id), name=str(name))
 
     async def _search_games_legacy(self, query: str, limit: int) -> list[dict]:
         data = await self._request_json(
@@ -214,6 +248,28 @@ class RobloxApi:
                     return results
         return results
 
+    async def _search_games_web(self, query: str, limit: int) -> list[dict]:
+        data = await self._request_json(
+            GAME_SEARCH_WEB_URL,
+            retries=1,
+            params={
+                "keyword": query,
+                "maxRows": str(limit),
+                "startRows": "0",
+            },
+        )
+        if not isinstance(data, list):
+            return []
+
+        results: list[dict] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            normalized = self._normalize_search_item(item)
+            if normalized:
+                results.append(normalized)
+        return results
+
     def _normalize_search_item(self, item: dict) -> dict | None:
         for nested_key in ("content", "item", "metadata", "experience"):
             nested = item.get(nested_key)
@@ -229,17 +285,21 @@ class RobloxApi:
         universe_id = (
             item.get("universeId")
             or item.get("universe_id")
+            or item.get("universeID")
+            or item.get("UniverseId")
             or item.get("universe")
         )
         place_id = (
             item.get("placeId")
             or item.get("rootPlaceId")
             or item.get("place_id")
+            or item.get("PlaceID")
+            or item.get("PlaceId")
             or item.get("rootPlace")
         )
         if not universe_id and item.get("id") and place_id:
             universe_id = item.get("id")
-        name = item.get("name") or item.get("title") or item.get("displayName")
+        name = item.get("name") or item.get("Name") or item.get("title") or item.get("displayName")
         if not universe_id or not name:
             return None
 

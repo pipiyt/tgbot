@@ -13,7 +13,17 @@ from aiogram.types import CallbackQuery, Message
 from config import settings
 from database import Database
 from keyboards import main_menu, search_results_keyboard, subscriptions_keyboard
-from roblox_api import close_api, get_game_info, get_thumbnail, resolve_game, search_games
+from roblox_api import (
+    GAME_SEARCH_WEB_URL,
+    OMNI_SEARCH_URL,
+    PLACE_WEB_DETAILS_URL,
+    close_api,
+    get_api,
+    get_game_info,
+    get_thumbnail,
+    resolve_game,
+    search_games,
+)
 from scheduler import EventScheduler, format_time
 
 
@@ -209,6 +219,52 @@ async def admin(message: Message) -> None:
         f"Подписки: {stats['subscriptions']}\n"
         f"События: {stats['events']}"
     )
+
+
+@router.message(Command("debug_roblox"))
+async def debug_roblox(message: Message) -> None:
+    if settings.admin_id is None or message.from_user.id != settings.admin_id:
+        await message.answer("Команда доступна только администратору.")
+        return
+
+    api = await get_api()
+    checks = [
+        (
+            "place details",
+            PLACE_WEB_DETAILS_URL,
+            {"assetId": "920587237"},
+        ),
+        (
+            "omni search",
+            OMNI_SEARCH_URL,
+            {
+                "searchQuery": "Adopt Me",
+                "verticalType": "experiences",
+                "sessionId": "roblox-notification-bot",
+            },
+        ),
+        (
+            "web search",
+            GAME_SEARCH_WEB_URL,
+            {
+                "keyword": "Adopt Me",
+                "maxRows": "3",
+                "startRows": "0",
+            },
+        ),
+    ]
+    lines = ["Roblox debug:"]
+    for title, url, params in checks:
+        data = await api._request_json(url, retries=1, params=params)
+        if data is None:
+            lines.append(f"{title}: FAIL")
+        elif isinstance(data, list):
+            lines.append(f"{title}: OK list[{len(data)}]")
+        elif isinstance(data, dict):
+            lines.append(f"{title}: OK dict keys={', '.join(list(data.keys())[:5])}")
+        else:
+            lines.append(f"{title}: OK {type(data).__name__}")
+    await message.answer("\n".join(lines))
 
 
 @router.message(F.text == "⚙️ Настройки")
