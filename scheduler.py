@@ -87,6 +87,8 @@ class EventScheduler:
             game_info = await get_game_info(universe_id) or {}
             playing = int(game_info.get("playing") or 0)
             events = await get_game_events(universe_id)
+            if not events:
+                continue
             for event in events:
                 is_new = await self.db.upsert_event(event)
                 if is_new:

@@ -57,7 +57,13 @@ class RobloxApi:
     async def close(self) -> None:
         await self.session.close()
 
-    async def _request_json(self, url: str, retries: int | None = None, **kwargs: Any) -> Any | None:
+    async def _request_json(
+        self,
+        url: str,
+        retries: int | None = None,
+        fallback: bool = True,
+        **kwargs: Any,
+    ) -> Any | None:
         last_error: Exception | None = None
         max_retries = retries if retries is not None else settings.http_retries
         for attempt in range(1, max_retries + 1):
@@ -90,6 +96,8 @@ class RobloxApi:
                 if attempt < max_retries:
                     await asyncio.sleep(min(attempt, 3))
         logger.error("Roblox request exhausted retries: %s - %s", url, last_error)
+        if not fallback:
+            return None
         return await asyncio.to_thread(self._request_json_urllib, url, kwargs.get("params"))
 
     def _request_json_urllib(self, url: str, params: dict | None = None) -> Any | None:
@@ -392,7 +400,12 @@ class RobloxApi:
 
     async def get_game_events(self, universe_id: int) -> list[dict]:
         url = EXPERIENCE_EVENTS_URL.format(universe_id=universe_id)
-        data = await self._request_json(url)
+        data = await self._request_json(
+            url,
+            retries=1,
+            fallback=False,
+            timeout=aiohttp.ClientTimeout(total=4),
+        )
         if data is None:
             logger.warning("Events endpoint is unavailable for universe_id=%s", universe_id)
             return []
