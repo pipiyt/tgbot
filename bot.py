@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -43,6 +44,69 @@ search_cache: dict[int, dict[int, dict]] = {}
 
 class AddGame(StatesGroup):
     waiting_for_game = State()
+
+
+@router.channel_post()
+async def save_channel_news(message: Message) -> None:
+    if not is_news_channel(message):
+        return
+
+    text = (message.text or message.caption or "").strip()
+    if not text:
+        return
+
+    link = channel_post_link(message)
+    title, description = split_news_text(text)
+    image = channel_post_image(message)
+    source_id = hashlib.sha256(f"telegram:{message.chat.id}:{message.message_id}".encode()).hexdigest()
+    title_ru = await translate_to_ru(title)
+    description_ru = await translate_to_ru(description)
+    await db.upsert_news_item(
+        {
+            "source_id": source_id,
+            "category": "roblox",
+            "title": title,
+            "title_ru": title_ru,
+            "description": description,
+            "description_ru": description_ru,
+            "link": link,
+            "image": image,
+            "published_ts": message.date.timestamp() if message.date else 0,
+            "source": f"telegram:{message.chat.username or message.chat.id}",
+        }
+    )
+    logger.info("Saved Telegram channel news: chat=%s message_id=%s", message.chat.id, message.message_id)
+
+
+def is_news_channel(message: Message) -> bool:
+    if message.chat.type != "channel":
+        return False
+    allowed = settings.news_telegram_channels
+    if not allowed:
+        return True
+    username = (message.chat.username or "").lower()
+    return username in allowed or str(message.chat.id) in allowed
+
+
+def channel_post_link(message: Message) -> str:
+    if message.chat.username:
+        return f"https://t.me/{message.chat.username}/{message.message_id}"
+    return ""
+
+
+def split_news_text(text: str) -> tuple[str, str]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return "Roblox news", ""
+    title = lines[0][:120]
+    description = " ".join(lines[1:]).strip() or lines[0]
+    return title, description
+
+
+def channel_post_image(message: Message) -> str:
+    if message.photo:
+        return f"/api/telegram-file?file_id={message.photo[-1].file_id}"
+    return ""
 
 
 @router.message(CommandStart())

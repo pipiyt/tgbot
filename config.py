@@ -41,6 +41,7 @@ class Settings:
     webapp_port: int
     news_roblox_rss_urls: tuple[str, ...]
     news_developer_rss_urls: tuple[str, ...]
+    news_telegram_channels: tuple[str, ...]
 
 
 settings = Settings(
@@ -62,5 +63,10 @@ settings = Settings(
         url.strip()
         for url in os.getenv("NEWS_DEVELOPER_RSS_URLS", os.getenv("NEWS_RSS_URLS", "https://blog.roblox.com/feed/")).split(",")
         if url.strip()
+    ),
+    news_telegram_channels=tuple(
+        channel.strip().lstrip("@").lower()
+        for channel in os.getenv("NEWS_TELEGRAM_CHANNELS", "").split(",")
+        if channel.strip()
     ),
 )

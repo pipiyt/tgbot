@@ -53,6 +53,7 @@ class WebAppServer:
         app.router.add_get("/api/popular", self.popular)
         app.router.add_get("/api/chats", self.chats)
         app.router.add_get("/api/chat-photo", self.chat_photo)
+        app.router.add_get("/api/telegram-file", self.chat_photo)
         app.router.add_get("/api/thumbnail/{universe_id}", self.thumbnail)
         app.router.add_post("/api/subscriptions", self.add_subscription)
         app.router.add_delete("/api/subscriptions/{subscription_id}", self.remove_subscription)
