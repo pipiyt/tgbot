@@ -25,8 +25,13 @@ from translator import translate_to_ru
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "webapp_static"
 POPULAR_CACHE_TTL_SECONDS = 300
+CHATS_CACHE_TTL_SECONDS = 600
+CHAT_LINKS = ("tradekronos", "stealabrain_chat")
 _popular_cache: list[dict] = []
 _popular_cache_ts = 0.0
+_chats_cache: list[dict] = []
+_chats_cache_ts = 0.0
+_telegram_file_cache: dict[str, str] = {}
 
 
 class WebAppServer:
@@ -43,6 +48,8 @@ class WebAppServer:
         app.router.add_get("/api/subscriptions/{subscription_id}/events", self.subscription_events)
         app.router.add_get("/api/search", self.search)
         app.router.add_get("/api/popular", self.popular)
+        app.router.add_get("/api/chats", self.chats)
+        app.router.add_get("/api/chat-photo", self.chat_photo)
         app.router.add_get("/api/thumbnail/{universe_id}", self.thumbnail)
         app.router.add_post("/api/subscriptions", self.add_subscription)
         app.router.add_delete("/api/subscriptions/{subscription_id}", self.remove_subscription)
@@ -111,6 +118,35 @@ class WebAppServer:
 
     async def popular(self, request: web.Request) -> web.Response:
         return web.json_response({"items": await load_popular_games_cached()})
+
+    async def chats(self, request: web.Request) -> web.Response:
+        return web.json_response({"items": await load_chats_cached()})
+
+    async def chat_photo(self, request: web.Request) -> web.Response:
+        file_id = request.query.get("file_id", "")
+        if not file_id:
+            raise web.HTTPNotFound(text="Photo not found")
+        file_path = await get_telegram_file_path(file_id)
+        if not file_path:
+            raise web.HTTPNotFound(text="Photo not found")
+
+        url = f"https://api.telegram.org/file/bot{settings.bot_token}/{file_path}"
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            try:
+                async with session.get(url) as response:
+                    if response.status >= 400:
+                        raise web.HTTPNotFound(text="Photo unavailable")
+                    body = await response.read()
+                    content_type = response.headers.get("Content-Type", "image/jpeg")
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                raise web.HTTPNotFound(text="Photo unavailable")
+
+        return web.Response(
+            body=body,
+            content_type=content_type,
+            headers={"Cache-Control": "public, max-age=21600"},
+        )
 
     async def thumbnail(self, request: web.Request) -> web.Response:
         universe_id = int(request.match_info["universe_id"])
@@ -223,6 +259,87 @@ async def load_popular_games_cached() -> list[dict]:
         _popular_cache = items
         _popular_cache_ts = now
     return _popular_cache
+
+
+async def load_chats_cached() -> list[dict]:
+    global _chats_cache, _chats_cache_ts
+    now = time.monotonic()
+    if _chats_cache and now - _chats_cache_ts < CHATS_CACHE_TTL_SECONDS:
+        return _chats_cache
+
+    chats = await asyncio.gather(*(load_chat(username) for username in CHAT_LINKS), return_exceptions=True)
+    items = [chat for chat in chats if isinstance(chat, dict)]
+    if items:
+        _chats_cache = items
+        _chats_cache_ts = now
+    return _chats_cache or [fallback_chat(username) for username in CHAT_LINKS]
+
+
+async def load_chat(username: str) -> dict:
+    chat_id = f"@{username}"
+    chat = await telegram_request("getChat", {"chat_id": chat_id})
+    count = await telegram_request("getChatMemberCount", {"chat_id": chat_id})
+    if not isinstance(chat, dict):
+        return fallback_chat(username)
+
+    photo = chat.get("photo") if isinstance(chat.get("photo"), dict) else {}
+    file_id = photo.get("small_file_id") or photo.get("big_file_id") or ""
+    return {
+        "username": username,
+        "url": f"https://t.me/{username}",
+        "title": chat.get("title") or username,
+        "description": chat.get("description") or chat.get("bio") or "Telegram-чат сообщества",
+        "members": int(count) if isinstance(count, int) else 0,
+        "photo_url": f"/api/chat-photo?file_id={file_id}" if file_id else "",
+    }
+
+
+async def telegram_request(method: str, params: dict[str, Any]) -> Any | None:
+    if not settings.bot_token:
+        return None
+    url = f"https://api.telegram.org/bot{settings.bot_token}/{method}"
+    timeout = aiohttp.ClientTimeout(total=4)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        try:
+            async with session.get(url, params=params) as response:
+                data = await response.json(content_type=None)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+            return None
+    if not isinstance(data, dict) or not data.get("ok"):
+        return None
+    return data.get("result")
+
+
+async def get_telegram_file_path(file_id: str) -> str | None:
+    if file_id in _telegram_file_cache:
+        return _telegram_file_cache[file_id]
+    result = await telegram_request("getFile", {"file_id": file_id})
+    if not isinstance(result, dict):
+        return None
+    file_path = result.get("file_path")
+    if isinstance(file_path, str):
+        _telegram_file_cache[file_id] = file_path
+        return file_path
+    return None
+
+
+def fallback_chat(username: str) -> dict:
+    titles = {
+        "tradekronos": "Trade Kronos",
+        "stealabrain_chat": "Steal a Brainrot Chat",
+    }
+    descriptions = {
+        "tradekronos": "Трейды, новости и общение игроков.",
+        "stealabrain_chat": "Обсуждение игры и поиск тиммейтов.",
+    }
+    return {
+        "username": username,
+        "url": f"https://t.me/{username}",
+        "title": titles.get(username, username),
+        "description": descriptions.get(username, "Telegram-чат сообщества"),
+        "members": 0,
+        "photo_url": "",
+    }
 
 
 async def load_news() -> list[dict]:

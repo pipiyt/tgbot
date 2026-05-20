@@ -13,6 +13,7 @@ const state = {
   newsFilter: "all",
   gamesMode: "subs",
   news: [],
+  chats: [],
   subscriptions: [],
   popularGames: [],
   searchResults: [],
@@ -25,6 +26,7 @@ const titles = {
   home: "Главная",
   news: "Новости",
   games: "События в играх",
+  chats: "Чаты",
   gameDetails: "События в играх",
   eventDetails: "Событие",
 };
@@ -62,6 +64,8 @@ document.querySelector("#gameSearchBtn").addEventListener("click", () => searchG
 document.querySelector("#gameSearch").addEventListener("keydown", (event) => {
   if (event.key === "Enter") searchGames();
 });
+document.querySelector("#chatSearchBtn").addEventListener("click", () => renderChats());
+document.querySelector("#chatSearch").addEventListener("input", () => renderChats());
 
 document.querySelector("#newsFilters").addEventListener("click", (event) => {
   const button = event.target.closest("[data-filter]");
@@ -83,6 +87,7 @@ document.addEventListener("click", (event) => {
   if (button.dataset.action === "remove") removeSub(Number(button.dataset.id), button);
   if (button.dataset.action === "details") showDetails(Number(button.dataset.id));
   if (button.dataset.action === "event-detail") showEventDetails(Number(button.dataset.index));
+  if (button.dataset.action === "open-chat") openChat(button.dataset.url);
 });
 
 function setView(view) {
@@ -97,6 +102,7 @@ function setView(view) {
 
 async function loadCurrent(force = false) {
   if (state.view === "news") await loadNews(force);
+  if (state.view === "chats") await loadChats(force);
   if (state.view === "gameDetails" && state.currentEvents.length) {
     const event = getCountdownEvent(state.currentEvents);
     if (event) startCountdown(event);
@@ -132,6 +138,32 @@ function renderNews() {
     return true;
   });
   list.innerHTML = items.length ? items.slice(0, 16).map(newsCard).join("") : empty("Новостей пока нет");
+}
+
+async function loadChats(force = false) {
+  const list = document.querySelector("#chatsList");
+  if (state.chats.length && !force) {
+    renderChats();
+    return;
+  }
+  list.innerHTML = skeleton("Загружаю чаты...");
+  try {
+    const data = await api("/api/chats");
+    state.chats = data.items || [];
+    renderChats();
+  } catch (error) {
+    list.innerHTML = empty("Чаты пока недоступны");
+  }
+}
+
+function renderChats() {
+  const list = document.querySelector("#chatsList");
+  const query = document.querySelector("#chatSearch").value.trim().toLowerCase();
+  const items = state.chats.filter((chat) => {
+    const text = `${chat.title || ""} ${chat.description || ""} ${chat.username || ""}`.toLowerCase();
+    return !query || text.includes(query);
+  });
+  list.innerHTML = items.length ? items.map(chatCard).join("") : empty("Чатов не найдено");
 }
 
 function setGamesMode(mode) {
@@ -271,6 +303,47 @@ function newsCard(item) {
       </span>
     </a>
   `;
+}
+
+function chatCard(chat) {
+  return `
+    <article class="chat-row">
+      <span class="chat-avatar">
+        ${chat.photo_url ? `<img src="${escapeAttr(chat.photo_url)}" alt="">` : `<span>${escapeHtml(chatInitials(chat.title || chat.username))}</span>`}
+      </span>
+      <span>
+        <strong>${escapeHtml(chat.title || chat.username)}</strong>
+        <small>${formatMembers(chat.members)}</small>
+        <em>${escapeHtml(compactText(chat.description || "Telegram-чат сообщества", 58))}</em>
+      </span>
+      <button class="mini-primary" type="button" data-action="open-chat" data-url="${escapeAttr(chat.url)}">Открыть</button>
+    </article>
+  `;
+}
+
+function openChat(url) {
+  if (!url) return;
+  if (tg?.openTelegramLink && url.startsWith("https://t.me/")) {
+    tg.openTelegramLink(url);
+    return;
+  }
+  location.href = url;
+}
+
+function formatMembers(value) {
+  const members = Number(value || 0);
+  if (!members) return "Участники";
+  return `${members.toLocaleString("ru-RU")} участников`;
+}
+
+function chatInitials(value) {
+  return String(value || "Chat")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
 }
 
 function subscriptionCard(item) {
