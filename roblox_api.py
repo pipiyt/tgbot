@@ -202,10 +202,20 @@ class RobloxApi:
         return results
 
     def _normalize_search_item(self, item: dict) -> dict | None:
+        for nested_key in ("content", "item", "metadata", "experience"):
+            nested = item.get(nested_key)
+            if isinstance(nested, dict):
+                normalized = self._normalize_search_item({**item, **nested})
+                if normalized:
+                    return normalized
+
+        root_place = item.get("rootPlace")
+        if isinstance(root_place, dict):
+            item = {**item, "rootPlaceId": root_place.get("id")}
+
         universe_id = (
             item.get("universeId")
             or item.get("universe_id")
-            or item.get("id")
             or item.get("universe")
         )
         place_id = (
@@ -214,6 +224,8 @@ class RobloxApi:
             or item.get("place_id")
             or item.get("rootPlace")
         )
+        if not universe_id and item.get("id") and place_id:
+            universe_id = item.get("id")
         name = item.get("name") or item.get("title") or item.get("displayName")
         if not universe_id or not name:
             return None

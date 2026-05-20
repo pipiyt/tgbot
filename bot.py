@@ -70,16 +70,18 @@ async def add_game_value(message: Message, state: FSMContext) -> None:
         await message.answer("Отправьте ссылку Roblox игры, placeId или universeId.")
         return
 
+    status_message = await message.answer("Ищу игру в Roblox...")
+
     game = await resolve_game(message.text)
     if not game:
         results = await search_games(message.text)
         if results:
-            await message.answer(
+            await status_message.edit_text(
                 "Я нашел несколько игр. Выберите нужную:",
                 reply_markup=search_results_keyboard(results),
             )
             return
-        await message.answer(
+        await status_message.edit_text(
             "Не удалось найти игру. Проверьте ссылку или ID.\n"
             "Можно отправить ссылку, placeId, universeId или название игры."
         )
