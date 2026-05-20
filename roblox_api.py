@@ -24,6 +24,7 @@ PLACE_DETAILS_URL = "https://games.roblox.com/v1/games/multiget-place-details"
 PLACE_UNIVERSE_URL = "https://apis.roblox.com/universes/v1/places/{place_id}/universe"
 UNIVERSE_DETAILS_URL = "https://games.roblox.com/v1/games"
 THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/games/icons"
+ASSET_THUMBNAIL_URL = "https://thumbnails.roblox.com/v1/assets"
 OMNI_SEARCH_URL = "https://apis.roblox.com/search-api/omni-search"
 
 # Experience Events web endpoints are not guaranteed to be stable/public.
@@ -420,7 +421,25 @@ class RobloxApi:
                 if self._is_event_finished(normalized):
                     continue
                 events.append(normalized)
+        await self._fill_event_images(events)
         return events
+
+    async def _fill_event_images(self, events: list[dict]) -> None:
+        asset_ids = sorted(
+            {
+                int(event["image_asset_id"])
+                for event in events
+                if not event.get("image_url") and event.get("image_asset_id")
+            }
+        )
+        if not asset_ids:
+            return
+
+        thumbnails = await self.get_asset_thumbnails(asset_ids)
+        for event in events:
+            asset_id = event.get("image_asset_id")
+            if asset_id and not event.get("image_url"):
+                event["image_url"] = thumbnails.get(int(asset_id))
 
     def _extract_events_list(self, data: Any) -> list[dict]:
         if isinstance(data, list):
@@ -476,6 +495,7 @@ class RobloxApi:
             end_time = end_time or event_time.get("endUtc") or event_time.get("endTime")
 
         image_url = self._extract_event_image_url(item)
+        image_asset_id = self._extract_event_image_asset_id(item)
 
         return {
             "event_id": str(event_id),
@@ -493,29 +513,76 @@ class RobloxApi:
             "start_time": self._normalize_time(start_time),
             "end_time": self._normalize_time(end_time),
             "image_url": image_url,
+            "image_asset_id": image_asset_id,
         }
 
     def _extract_event_image_url(self, item: dict) -> str | None:
         direct = item.get("imageUrl") or item.get("thumbnailUrl") or item.get("iconUrl") or item.get("mediaUrl")
         if isinstance(direct, str) and direct.startswith("http"):
             return direct
+        if isinstance(direct, str) and direct.startswith("//"):
+            return f"https:{direct}"
 
         for key in ("image", "thumbnail", "icon", "media", "asset", "assets", "thumbnails"):
             value = item.get(key)
             if isinstance(value, str) and value.startswith("http"):
                 return value
+            if isinstance(value, str) and value.startswith("//"):
+                return f"https:{value}"
             if isinstance(value, list):
                 for entry in value:
                     if isinstance(entry, str) and entry.startswith("http"):
                         return entry
+                    if isinstance(entry, str) and entry.startswith("//"):
+                        return f"https:{entry}"
                     if isinstance(entry, dict):
                         nested = entry.get("url") or entry.get("imageUrl") or entry.get("thumbnailUrl")
                         if isinstance(nested, str) and nested.startswith("http"):
                             return nested
+                        if isinstance(nested, str) and nested.startswith("//"):
+                            return f"https:{nested}"
             if isinstance(value, dict):
                 nested = value.get("url") or value.get("imageUrl") or value.get("thumbnailUrl")
                 if isinstance(nested, str) and nested.startswith("http"):
                     return nested
+                if isinstance(nested, str) and nested.startswith("//"):
+                    return f"https:{nested}"
+        return None
+
+    def _extract_event_image_asset_id(self, item: dict) -> int | None:
+        for key in (
+            "imageId",
+            "imageAssetId",
+            "thumbnailId",
+            "thumbnailAssetId",
+            "mediaId",
+            "mediaAssetId",
+            "assetId",
+        ):
+            asset_id = self._to_int(item.get(key))
+            if asset_id:
+                return asset_id
+
+        for key in ("image", "thumbnail", "icon", "media", "asset", "assets", "thumbnails"):
+            value = item.get(key)
+            if isinstance(value, dict):
+                asset_id = self._extract_event_image_asset_id(value)
+                if asset_id:
+                    return asset_id
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, dict):
+                        asset_id = self._extract_event_image_asset_id(entry)
+                        if asset_id:
+                            return asset_id
+                    else:
+                        asset_id = self._to_int(entry)
+                        if asset_id:
+                            return asset_id
+            else:
+                asset_id = self._to_int(value)
+                if asset_id:
+                    return asset_id
         return None
 
     def _to_int(self, value: Any) -> int | None:
@@ -525,6 +592,34 @@ class RobloxApi:
             return int(value)
         except (TypeError, ValueError):
             return None
+
+    async def get_asset_thumbnails(self, asset_ids: list[int]) -> dict[int, str]:
+        if not asset_ids:
+            return {}
+        data = await self._request_json(
+            ASSET_THUMBNAIL_URL,
+            retries=1,
+            fallback=False,
+            timeout=aiohttp.ClientTimeout(total=2),
+            params={
+                "assetIds": ",".join(str(asset_id) for asset_id in asset_ids[:20]),
+                "size": "768x432",
+                "format": "Png",
+                "isCircular": "false",
+            },
+        )
+        if not isinstance(data, dict):
+            return {}
+
+        result: dict[int, str] = {}
+        for item in data.get("data") or []:
+            if not isinstance(item, dict):
+                continue
+            target_id = self._to_int(item.get("targetId"))
+            image_url = item.get("imageUrl")
+            if target_id and isinstance(image_url, str) and image_url.startswith("http"):
+                result[target_id] = image_url
+        return result
 
     def _normalize_time(self, value: Any) -> str | None:
         if not value:
