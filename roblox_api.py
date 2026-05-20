@@ -4,6 +4,9 @@ import asyncio
 import logging
 import re
 import socket
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -88,7 +91,33 @@ class RobloxApi:
                 )
                 await asyncio.sleep(min(attempt, 3))
         logger.error("Roblox request exhausted retries: %s - %s", url, last_error)
-        return None
+        return await asyncio.to_thread(self._request_json_urllib, url, kwargs.get("params"))
+
+    def _request_json_urllib(self, url: str, params: dict | None = None) -> Any | None:
+        if params:
+            query = urllib.parse.urlencode(params)
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}{query}"
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": "RobloxNotificationBot/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=settings.http_timeout_seconds) as response:
+                charset = response.headers.get_content_charset() or "utf-8"
+                raw = response.read().decode(charset, errors="replace")
+                if not raw:
+                    return None
+                import json
+
+                return json.loads(raw)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
+            logger.warning("Roblox urllib fallback failed: %s - %s: %r", url, type(exc).__name__, exc)
+            return None
 
     async def resolve_game(self, input_text: str) -> RobloxGame | None:
         value = input_text.strip()
