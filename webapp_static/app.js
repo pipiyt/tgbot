@@ -14,6 +14,7 @@ const state = {
   gamesMode: "subs",
   news: [],
   subscriptions: [],
+  popularGames: [],
   searchResults: [],
 };
 
@@ -88,7 +89,7 @@ async function loadCurrent(force = false) {
   if (state.view === "news") await loadNews(force);
   if (state.view === "games") {
     if (state.gamesMode === "subs") await loadSubscriptions();
-    if (state.gamesMode === "search" && (!state.searchResults.length || force)) await loadPopularGames();
+    if (state.gamesMode === "search" && (!state.popularGames.length || force)) await loadPopularGames();
   }
 }
 
@@ -126,7 +127,10 @@ function setGamesMode(mode) {
   });
   document.querySelector("#searchPanel").classList.toggle("visible", mode === "search");
   if (mode === "subs") loadSubscriptions();
-  if (mode === "search") loadPopularGames();
+  if (mode === "search") {
+    if (state.popularGames.length) renderPopularGames();
+    else loadPopularGames();
+  }
 }
 
 async function loadSubscriptions() {
@@ -154,11 +158,17 @@ async function loadPopularGames() {
   list.innerHTML = skeleton("Загружаю популярные игры...");
   try {
     const data = await api("/api/popular");
-    state.searchResults = data.items || [];
-    list.innerHTML = state.searchResults.length ? state.searchResults.map(searchCard).join("") : empty("Популярные игры пока недоступны");
+    state.popularGames = data.items || [];
+    renderPopularGames();
   } catch (error) {
     list.innerHTML = empty("Популярные игры пока недоступны");
   }
+}
+
+function renderPopularGames() {
+  const list = document.querySelector("#gamesList");
+  document.querySelector("#gamesSubtitle").textContent = "Популярные игры";
+  list.innerHTML = state.popularGames.length ? state.popularGames.map(searchCard).join("") : empty("Популярные игры пока недоступны");
 }
 
 async function searchGames() {

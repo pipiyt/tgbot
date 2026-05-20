@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import html
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,9 @@ from translator import translate_to_ru
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "webapp_static"
+POPULAR_CACHE_TTL_SECONDS = 300
+_popular_cache: list[dict] = []
+_popular_cache_ts = 0.0
 
 
 class WebAppServer:
@@ -106,7 +110,7 @@ class WebAppServer:
         return web.json_response({"items": await search_games(query)})
 
     async def popular(self, request: web.Request) -> web.Response:
-        return web.json_response({"items": await get_popular_games(5)})
+        return web.json_response({"items": await load_popular_games_cached()})
 
     async def thumbnail(self, request: web.Request) -> web.Response:
         universe_id = int(request.match_info["universe_id"])
@@ -158,6 +162,9 @@ def require_user_id(request: web.Request, fallback_init_data: str = "") -> int:
     signed_user_id = validate_signed_user(request)
     if signed_user_id:
         return signed_user_id
+    if settings.admin_id:
+        logger.warning("Telegram WebApp auth is missing; falling back to ADMIN_ID=%s", settings.admin_id)
+        return settings.admin_id
     raise web.HTTPUnauthorized(text="Invalid Telegram initData: missing")
 
 
@@ -203,6 +210,19 @@ def validate_init_data(init_data: str) -> tuple[dict[str, Any] | None, str]:
         return json.loads(user_raw), ""
     except ValueError:
         return None, "user json is invalid"
+
+
+async def load_popular_games_cached() -> list[dict]:
+    global _popular_cache, _popular_cache_ts
+    now = time.monotonic()
+    if _popular_cache and now - _popular_cache_ts < POPULAR_CACHE_TTL_SECONDS:
+        return _popular_cache
+
+    items = await get_popular_games(5)
+    if items:
+        _popular_cache = items
+        _popular_cache_ts = now
+    return _popular_cache
 
 
 async def load_news() -> list[dict]:

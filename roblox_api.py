@@ -218,6 +218,8 @@ class RobloxApi:
         data = await self._request_json(
             POPULAR_GAMES_URL,
             retries=1,
+            fallback=False,
+            timeout=aiohttp.ClientTimeout(total=2),
             params={
                 "model.startRows": "0",
                 "model.maxRows": str(limit),
@@ -232,8 +234,14 @@ class RobloxApi:
 
         fallback: list[dict] = []
         seen: set[int] = set()
-        for query in ("Blox Fruits", "Grow a Garden", "Brookhaven", "Adopt Me", "Dress To Impress"):
-            items = await self.search_games(query, 1)
+        fallback_queries = ("Blox Fruits", "Grow a Garden", "Brookhaven", "Adopt Me", "Dress To Impress")
+        fallback_results = await asyncio.gather(
+            *(self.search_games(query, 1) for query in fallback_queries),
+            return_exceptions=True,
+        )
+        for items in fallback_results:
+            if isinstance(items, Exception):
+                continue
             if not items:
                 continue
             item = items[0]
