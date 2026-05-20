@@ -45,13 +45,23 @@ class RobloxApi:
     async def close(self) -> None:
         await self.session.close()
 
-    async def _request_json(self, url: str, **kwargs: Any) -> Any | None:
+    async def _request_json(self, url: str, retries: int | None = None, **kwargs: Any) -> Any | None:
         last_error: Exception | None = None
-        for attempt in range(1, settings.http_retries + 1):
+        max_retries = retries if retries is not None else settings.http_retries
+        for attempt in range(1, max_retries + 1):
             try:
                 async with self.session.get(url, **kwargs) as response:
                     if response.status == 404:
                         logger.warning("Roblox endpoint returned 404: %s", url)
+                        return None
+                    if response.status >= 400:
+                        body = await response.text()
+                        logger.warning(
+                            "Roblox endpoint returned %s: %s - %s",
+                            response.status,
+                            url,
+                            body[:300],
+                        )
                         return None
                     response.raise_for_status()
                     return await response.json()
@@ -60,7 +70,7 @@ class RobloxApi:
                 logger.warning(
                     "Roblox request failed (%s/%s): %s - %s",
                     attempt,
-                    settings.http_retries,
+                    max_retries,
                     url,
                     exc,
                 )
@@ -96,17 +106,18 @@ class RobloxApi:
         if not normalized_query:
             return []
 
-        results = await self._search_games_legacy(normalized_query, limit)
+        results = await self._search_games_omni(normalized_query, limit)
         if results:
             return results[:limit]
 
-        results = await self._search_games_omni(normalized_query, limit)
+        results = await self._search_games_legacy(normalized_query, limit)
         return results[:limit]
 
     def _normalize_search_query(self, query: str) -> str:
         slug_match = ROBLOX_GAME_SLUG_RE.search(query)
         if slug_match:
             query = slug_match.group("slug").replace("-", " ")
+        query = query.replace("_", " ")
         return query.strip()
 
     def _extract_place_id(self, value: str) -> int | None:
@@ -153,6 +164,7 @@ class RobloxApi:
     async def _search_games_legacy(self, query: str, limit: int) -> list[dict]:
         data = await self._request_json(
             GAME_SEARCH_URL,
+            retries=1,
             params={
                 "model.keyword": query,
                 "model.maxRows": str(limit),
@@ -174,9 +186,10 @@ class RobloxApi:
     async def _search_games_omni(self, query: str, limit: int) -> list[dict]:
         data = await self._request_json(
             OMNI_SEARCH_URL,
+            retries=1,
             params={
                 "searchQuery": query,
-                "pageType": "all",
+                "verticalType": "experiences",
                 "sessionId": "roblox-notification-bot",
             },
         )
